@@ -1,10 +1,8 @@
-[![Build Status](https://travis-ci.org/dxprog/anime-bracket.svg)](https://travis-ci.org/dxprog/anime-bracket)
-
-# Brakkit
+# AnimeBracket
 
 A site for running standard elimination style brackets.
 
-## Things you'll need to run brakkit
+## Things you'll need to run AnimeBracket
 - PHP 7.x
 - MySQL/MariaDB 5.1+
 - NodeJS 14.x
@@ -15,7 +13,7 @@ A site for running standard elimination style brackets.
 
 ### Configuration
 
-Brakkit is set up to allow multiple front-ends to be run with a single back-end. As such, there are two config files:
+AnimeBracket is set up to allow multiple front-ends to be run with a single back-end. As such, there are two config files:
 
 - `config.php`: This is the configuration for the back-end system and is primarily database setup. The back-end portion houses the `api/`, `cache/`, `controller/`, `lib/`, and `images/` directories.
 - `app-config.php`: Configuration values for an individual front-end. The front-end consists of the `static/` and `views/` directories. Use `app-config.sample.php` to set up your app config.

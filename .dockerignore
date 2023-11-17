@@ -3,4 +3,5 @@ vendor/
 cache/
 baked/
 dist/
+images/
 Dockerfile
