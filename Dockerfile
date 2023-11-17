@@ -33,7 +33,6 @@ WORKDIR /app
 RUN echo "*/60 *  * * *   root    cd /app && php cron/advance.php" >> /etc/crontab
 
 EXPOSE 80
-RUN chmod +x docker/startup.sh
 
 # Run nginx as the perma-command to keep the container from stopping
 ENTRYPOINT ["/bin/bash"]

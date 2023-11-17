@@ -22,3 +22,5 @@ cache/*.jpg
 yarn-error.log
 dist/
 .idea
+db
+images
