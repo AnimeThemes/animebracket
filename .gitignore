@@ -21,3 +21,4 @@ typings/
 cache/*.jpg
 yarn-error.log
 dist/
+.idea
