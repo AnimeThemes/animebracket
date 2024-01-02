@@ -22,6 +22,7 @@ namespace Controller\Admin {
       'mov' => 'video',
       'mp4' => 'video',
       'm4v' => 'video',
+      'webm' => 'video',
       'mp3' => 'audio',
       'aac' => 'audio',
       // Because why not?
