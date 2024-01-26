@@ -93,7 +93,7 @@ namespace Api {
         /**
          * Whether the user has voted on this round
          */
-        public $voted = false;
+        public $voted = 0;
 
         /**
          * ID of the character the user voted for
@@ -103,7 +103,7 @@ namespace Api {
         /**
          * Whether the round voting has been finalized
          */
-        public $final = false;
+        public $final = 0;
 
         /**
          * The timestamp of when this round ended
@@ -113,7 +113,7 @@ namespace Api {
         /**
          * Has this round been "deleted"
          */
-        public $deleted = false;
+        public $deleted = 0;
 
         /**
          * Constructor
