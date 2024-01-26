@@ -3,7 +3,7 @@
 require('config.php');
 require('lib/aal.php');
 
-require('/var/www/animebracket/app-config.php');
+require(__DIR__ . '/../app-config.php');
 
 // Disable caching
 Lib\Cache::getInstance()->setDisabled(true);

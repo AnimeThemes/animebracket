@@ -18,7 +18,8 @@ RUN apt update && \
                    memcached \
                    redis \
                    git \
-                   nano
+                   nano \
+                   cron
 
 # Copy nginx config
 COPY docker/nginx.conf /etc/nginx/sites-enabled/default
@@ -30,7 +31,9 @@ COPY docker/nginx.conf /etc/nginx/sites-enabled/default
 WORKDIR /app
 
 # setup the auto-advance cron
-RUN echo "*/60 *  * * *   root    cd /app && php cron/advance.php" >> /etc/crontab
+COPY docker/crontab /etc/cron.d/animebracket
+RUN chmod 0644 /etc/cron.d/animebracket
+RUN crontab /etc/cron.d/animebracket
 
 EXPOSE 80
 
