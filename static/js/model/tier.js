@@ -49,14 +49,14 @@ Tier.prototype = {
         side: 'left',
         height: cellHeight,
         rounds: [
-          { id: rounds[0], entrant1: rounds[0].entrant1 }
+          { id: rounds[0].id, entrant1: rounds[0].entrant1 }
         ]
       }));
       retVal.push(TIER_TMPL({
         side: 'right',
         height: cellHeight,
         rounds: [
-          { id: rounds[0], entrant1: rounds[0].entrant2 }
+          { id: rounds[0].id, entrant1: rounds[0].entrant2 }
         ]
       }));
     }
