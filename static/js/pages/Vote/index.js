@@ -133,7 +133,7 @@ const Vote = ({ rounds, bracket, showCaptcha, meetsAgeRequirement }) => {
         {showCaptcha && (
           <div className="captcha">
             <ReCAPTCHA
-              sitekey="6LdLPWgUAAAAAMWUFDYKtMFz0ppFaWI6DbEarLjj"
+              sitekey="6LfAX2ApAAAAANuGFcQ-wVU7rgYW04SnKZJdNXFp"
               onChange={setCaptchaResponse}
             />
           </div>
