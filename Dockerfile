@@ -23,6 +23,7 @@ RUN apt update && \
 
 # Copy nginx config
 COPY docker/nginx.conf /etc/nginx/sites-enabled/default
+COPY docker/docker.conf /etc/nginx/conf.d/docker.conf
 
 ###
 # APP SET UP
