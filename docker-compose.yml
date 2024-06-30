@@ -10,6 +10,7 @@ services:
       - ./:/app
     depends_on:
       - db
+    restart: always
   db:
     image: mysql
     environment:
@@ -19,3 +20,4 @@ services:
       MYSQL_PASSWORD: ${DB_PASS}
     volumes:
       - ./db/data:/var/lib/mysql
+    restart: always
