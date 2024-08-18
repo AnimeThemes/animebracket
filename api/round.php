@@ -496,14 +496,19 @@ namespace Api {
             if (!$retVal) {
                 $retVal = 'Voting - Round ' . $round->tier . ', ';
 
-                $group = 'All Groups';
-                $groups = [];
+                // set the group only if all "round"s (matchups) belong to the same group
+                $group = 'Group ' . chr($round->group + 65);
                 foreach ($roundsInTier as $tierRound) {
-                    if (isset($groups[$tierRound->group])) {
-                        $group = 'Group ' . chr($round->group + 65);
+                    if (!isset($first_group)) {
+                        $first_group = $tierRound->group;
+                    }
+
+                    // if any "round" is in a different group than the 1st (basically if any 2 don't match),
+                    // display "All Groups"
+                    if ($tierRound->group !== $first_group) {
+                        $group = 'All Groups';
                         break;
                     }
-                    $groups[$tierRound->group] = true;
                 }
 
                 $retVal .= $group;
