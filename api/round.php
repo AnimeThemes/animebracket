@@ -151,7 +151,7 @@ namespace Api {
                 if (false !== $group) {
                     $params['group'] = $group;
 
-                    // Check to see how many rounds there are in the group total. If there's only one, come back and get them all
+                    // Check number of "round"s there are in the group. If <= 2, come back and get them all
                     $result = self::createQuery()
                         ->count('total')
                         ->where('bracketId', $bracketId)
@@ -160,7 +160,7 @@ namespace Api {
                         ->where('deleted', 0)
                         ->execute();
                     $row = Lib\Db::Fetch($result);
-                    if (is_object($row) && (int)$row->total == 1) {
+                    if (is_object($row) && (int)$row->total <= 2) {
                         $retVal = self::getBracketRounds($bracketId, $tier, false, $ignoreCache);
                         $result = null;
                     } else {
@@ -496,14 +496,19 @@ namespace Api {
             if (!$retVal) {
                 $retVal = 'Voting - Round ' . $round->tier . ', ';
 
-                $group = 'All Groups';
-                $groups = [];
+                // set the group only if all "round"s (matchups) belong to the same group
+                $group = 'Group ' . chr($round->group + 65);
                 foreach ($roundsInTier as $tierRound) {
-                    if (isset($groups[$tierRound->group])) {
-                        $group = 'Group ' . chr($round->group + 65);
+                    if (!isset($first_group)) {
+                        $first_group = $tierRound->group;
+                    }
+
+                    // if any "round" is in a different group than the 1st (basically if any 2 don't match),
+                    // display "All Groups"
+                    if ($tierRound->group !== $first_group) {
+                        $group = 'All Groups';
                         break;
                     }
-                    $groups[$tierRound->group] = true;
                 }
 
                 $retVal .= $group;
