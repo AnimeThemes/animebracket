@@ -151,7 +151,7 @@ namespace Api {
                 if (false !== $group) {
                     $params['group'] = $group;
 
-                    // Check to see how many rounds there are in the group total. If there's only one, come back and get them all
+                    // Check number of "round"s there are in the group. If <= 2, come back and get them all
                     $result = self::createQuery()
                         ->count('total')
                         ->where('bracketId', $bracketId)
@@ -160,7 +160,7 @@ namespace Api {
                         ->where('deleted', 0)
                         ->execute();
                     $row = Lib\Db::Fetch($result);
-                    if (is_object($row) && (int)$row->total == 1) {
+                    if (is_object($row) && (int)$row->total <= 2) {
                         $retVal = self::getBracketRounds($bracketId, $tier, false, $ignoreCache);
                         $result = null;
                     } else {
