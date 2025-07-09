@@ -19,11 +19,11 @@
         "ramps": [
             {
                 "percent": 100,
-                "value": "control"
+                "value": "treatment"
             },
             {
                 "percent": 0,
-                "value": "treatment"
+                "value": "control"
             }
         ]
     }

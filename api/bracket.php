@@ -163,6 +163,9 @@ namespace Api {
                 $this->start = (int) $this->start;
                 $this->winnerCharacterId = $this->winnerCharacterId ? (int) $this->winnerCharacterId : null;
                 $this->hidden = $this->hidden > 0 ? 1 : 0;
+
+                // TODO: This is only to disabled Captchas until we migrated away from Google
+                $this->captcha = 0;
             }
         }
 

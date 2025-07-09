@@ -4,7 +4,7 @@ namespace Lib {
 
   class RedditOAuth {
 
-    const REDDIT_API_URL = 'https://ssl.reddit.com/api/v1';
+    const REDDIT_API_URL = 'https://www.reddit.com/api/v1';
     const REDDIT_OAUTH_URL = 'https://oauth.reddit.com';
 
     private $clientId = null;
