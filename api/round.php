@@ -509,9 +509,8 @@ namespace Api {
                             break;
                         }
                     }
-
-                    $retVal .= $group;
                 }
+                $retVal .= $group;
             }
 
             return $retVal;
