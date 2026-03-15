@@ -9,7 +9,7 @@ namespace Controller\Admin {
     class Advance extends \Controller\Me {
 
         // The amount of time in seconds to delay bracket advancing
-        const BRACKET_ADVANCE_DELAY = 300;
+        const BRACKET_ADVANCE_DELAY = 0;
 
         public static function generate(array $params) {
 
