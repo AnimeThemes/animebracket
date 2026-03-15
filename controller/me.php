@@ -90,7 +90,9 @@ namespace Controller {
                     $nextRounds = Api\Round::getNextRounds($bracket);
                     $bracket->nextTitle = null;
                     if ($nextRounds) {
-                        $bracket->nextTitle = str_replace([ 'Voting - ', 'Eliminations - ' ], '', Api\Round::getBracketTitleForRound($bracket, $nextRounds[0]));
+                        // in testing, doesn't look like we actually get here during voting,
+                        // but updated to pass $nextRounds anyways to be safe
+                        $bracket->nextTitle = str_replace([ 'Voting - ', 'Eliminations - ' ], '', Api\Round::getBracketTitleForRound($bracket, $nextRounds[0], $nextRounds));
                     }
 
                     // This is a dumb catch all while I work out issues in the stored procedure
