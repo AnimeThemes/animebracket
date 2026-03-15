@@ -38,6 +38,7 @@ BEGIN
       r.`round_group` = groupNum
     )
   ORDER BY
-    r.`round_order`;
+    r.`round_group` ASC,
+    r.`round_order` ASC;
 
 END //
