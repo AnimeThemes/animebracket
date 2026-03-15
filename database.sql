@@ -170,7 +170,8 @@ CREATE DEFINER=`root`@`localhost` PROCEDURE `proc_GetBracketRounds` (`bracketId`
       r.`round_group` = groupNum
     )
   ORDER BY
-    r.`round_order`;
+    r.`round_group` ASC,
+    r.`round_order` ASC;
 
 END$$
 

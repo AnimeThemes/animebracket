@@ -458,7 +458,7 @@ namespace Api {
             } else {
                 $rounds = self::getCurrentRounds($bracket->id);
                 if ($rounds) {
-                    $retVal = self::getBracketTitleForRound($bracket, $rounds[0]);
+                    $retVal = self::getBracketTitleForRound($bracket, $rounds[0], $rounds);
                 }
             }
 
@@ -469,7 +469,7 @@ namespace Api {
         /**
          * Returns the name for the provided rounds
          */
-        public static function getBracketTitleForRound(Bracket $bracket, Round $round) {
+        public static function getBracketTitleForRound(Bracket $bracket, Round $round, array $roundsInView = null) {
 
             $retVal = '';
 
@@ -496,21 +496,20 @@ namespace Api {
             if (!$retVal) {
                 $retVal = 'Voting - Round ' . $round->tier . ', ';
 
-                // set the group only if all "round"s (matchups) belong to the same group
+                // group display name defaults to specified "round" group
                 $group = 'Group ' . chr($round->group + 65);
-                foreach ($roundsInTier as $tierRound) {
-                    if (!isset($first_group)) {
-                        $first_group = $tierRound->group;
-                    }
-
-                    // if any "round" is in a different group than the 1st (basically if any 2 don't match),
-                    // display "All Groups"
-                    if ($tierRound->group !== $first_group) {
-                        $group = 'All Groups';
-                        break;
+                if ($roundsInView !== null && count($roundsInView) > 0) {
+                    // if $roundsInView provided, check if all groups are the same or not
+                    $firstGroup = $roundsInView[0]->group;
+                    foreach ($roundsInView as $viewRound) {
+                        // if any "round" is in a different group than the 1st (basically if any 2 don't match),
+                        // display "All Groups"
+                        if ($viewRound->group !== $firstGroup) {
+                            $group = 'All Groups';
+                            break;
+                        }
                     }
                 }
-
                 $retVal .= $group;
             }
 
