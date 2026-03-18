@@ -60,21 +60,36 @@ export default Route('admin', {
   async toggleLockVoting(evt) {
     evt.preventDefault();
     const $link = $(evt.currentTarget);
+    if ($link.data('loading')) {
+      return;
+    }
     const $row = $link.closest('.lock-voting-row');
     const perma = $row.data('perma');
     const action = $link.data('action');
     const csrfToken = $row.data('csrf');
 
-    const body = new URLSearchParams({ action, _auth: csrfToken });
-    const res = await fetch(`/me/process/${perma}/lock-voting/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString()
-    });
-    const data = await res.json();
-    if (data.success) {
-      $row.data('locked', data.locked);
-      this.renderLockLink($row);
+    $link.data('loading', true).addClass('disabled');
+    try {
+      const body = new URLSearchParams({ action, _auth: csrfToken });
+      const res = await fetch(`/me/process/${perma}/lock-voting/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      if (data && data.success) {
+        $row.data('locked', data.locked);
+        this.renderLockLink($row);
+      } else {
+        window.alert((data && data.message) ? data.message : 'Unable to update voting lock. Please try again.');
+      }
+    } catch (err) {
+      window.alert('There was an error updating voting lock. Please try again.');
+    } finally {
+      $link.data('loading', false).removeClass('disabled');
     }
   }
 

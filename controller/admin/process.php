@@ -69,6 +69,15 @@ namespace Controller\Admin {
      * Accepts action=lock or action=unlock via POST; returns JSON { success, locked }.
      */
     private static function _lockVoting(Api\Bracket $bracket) {
+      if (!self::_verifyCsrf(self::$_user)) {
+        $out = (object)[
+          'success' => false,
+          'message' => 'There was an error authenticating your account. Please logout and log back in.'
+        ];
+        Lib\Display::renderJson($out);
+        return;
+      }
+
       $action = Lib\Url::Post('action');
       if ($action === 'lock') {
         $locked = true;
@@ -79,7 +88,16 @@ namespace Controller\Admin {
         Lib\Display::renderJson($out);
         return;
       }
-      $bracket->setVotingLocked($locked);
+      $writeSuccess = $bracket->setVotingLocked($locked);
+      $verified = $bracket->isVotingLocked() === $locked;
+      if (!$writeSuccess || !$verified) {
+        $out = (object)[
+          'success' => false,
+          'message' => 'Unable to update voting lock. Please try again.'
+        ];
+        Lib\Display::renderJson($out);
+        return;
+      }
       $out = (object)[ 'success' => true, 'locked' => $locked ];
       Lib\Display::renderJson($out);
     }
