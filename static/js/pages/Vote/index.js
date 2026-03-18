@@ -161,7 +161,7 @@ const Vote = ({ rounds, bracket, showCaptcha, meetsAgeRequirement, votingLocked 
           <aside className="overlay__content">
             <h1 className="overlay__header">Voting Locked</h1>
             <p className="overlay__body">
-              Voting has been temporarily locked by contest admins.
+              Voting has temporarily been locked by contest admins.
             </p>
             <a href={`/${bracket.perma}/characters`}>Go to Entrants</a>
           </aside>
