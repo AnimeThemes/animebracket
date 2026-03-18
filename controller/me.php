@@ -128,6 +128,10 @@ namespace Controller {
                     $bracket->showDelete = $bracket->showEdit;
                     $bracket->isSiteAdmin = self::$_user->admin;
                     $bracket->csrfToken = self::$_user->csrfToken;
+                    $bracket->showVotingLockToggle = $bracket->state == BS_ELIMINATIONS || $bracket->state == BS_VOTING;
+                    if ($bracket->showVotingLockToggle) {
+                        $bracket->votingLocked = $bracket->isVotingLocked();
+                    }
                 }
 
             }

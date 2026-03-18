@@ -10,7 +10,7 @@ import { BracketState } from '@src/constants';
 import { BallotEntrant } from './components/BallotEntrant';
 import { useVoteForm } from './useVoteForm';
 
-const Vote = ({ rounds, bracket, showCaptcha, meetsAgeRequirement }) => {
+const Vote = ({ rounds, bracket, showCaptcha, meetsAgeRequirement, votingLocked }) => {
   const [ messageText, setMessageText ] = useState('');
   const [ messageError, setMessageError ] = useState(false);
   const [ hasCastVotes, setHasCastVotes ] = useState(false);
@@ -147,13 +147,23 @@ const Vote = ({ rounds, bracket, showCaptcha, meetsAgeRequirement }) => {
           Submit Votes
         </button>
       </div>
-      {!meetsAgeRequirement && (
+      {!meetsAgeRequirement ? (
         <div className="overlay">
           <aside className="overlay__content">
             <h1 className="overlay__header">Oh dear...</h1>
             <p className="overlay__body">
               Your reddit account does not meet the minimum age requirements for this bracket :(
             </p>
+          </aside>
+        </div>
+      ) : votingLocked && (
+        <div className="overlay">
+          <aside className="overlay__content">
+            <h1 className="overlay__header">Voting Locked</h1>
+            <p className="overlay__body">
+              Voting has been temporarily locked by contest admins.
+            </p>
+            <a href={`/${bracket.perma}/characters`}>View Entrants</a>
           </aside>
         </div>
       )}
@@ -164,10 +174,10 @@ const Vote = ({ rounds, bracket, showCaptcha, meetsAgeRequirement }) => {
 // ...I hate this route nonsense...
 export default Route('vote', {
   initRoute() {
-    const { bracket, round, userId, csrfToken, showCaptcha, meetsAgeRequirement } = window._appData;
+    const { bracket, round, userId, csrfToken, showCaptcha, meetsAgeRequirement, votingLocked } = window._appData;
     ReactDOM.render((
       <AuthContextProvider value={{ userId, csrfToken }}>
-        <Vote bracket={bracket} rounds={round} showCaptcha={showCaptcha} meetsAgeRequirement={meetsAgeRequirement} />
+        <Vote bracket={bracket} rounds={round} showCaptcha={showCaptcha} meetsAgeRequirement={meetsAgeRequirement} votingLocked={votingLocked} />
       </AuthContextProvider>
     ), document.getElementById('reactApp'));
   }
