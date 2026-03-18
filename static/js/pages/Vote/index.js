@@ -163,7 +163,7 @@ const Vote = ({ rounds, bracket, showCaptcha, meetsAgeRequirement, votingLocked 
             <p className="overlay__body">
               Voting has been temporarily locked by contest admins.
             </p>
-            <a href={`/${bracket.perma}/characters`}>View Entrants</a>
+            <a href={`/${bracket.perma}/characters`}>Go to Entrants</a>
           </aside>
         </div>
       )}
