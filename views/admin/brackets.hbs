@@ -101,6 +101,9 @@
                   <a href="/me/counts/{{perma}}/">Current Vote Counts</a>
                 </li>
               {{/isBracketEliminations}}
+              {{#if showVotingLockToggle}}
+                <li class="lock-voting-row" data-perma="{{perma}}" data-locked="{{votingLocked}}" data-csrf="{{csrfToken}}"></li>
+              {{/if}}
               <li>
                 <a href="/me/hide/{{perma}}/">{{#if hidden}}Unhide{{else}}Hide{{/if}} Bracket</a>
               </li>

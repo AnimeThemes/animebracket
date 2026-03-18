@@ -372,6 +372,7 @@ namespace Api {
             Round::getCurrentRounds($this->id, true);
 
             $this->_unlock();
+            $this->setVotingLocked(false);
         }
 
         /**
@@ -729,6 +730,31 @@ namespace Api {
          */
         private function _lockedCacheKey() {
             return 'Api:Bracket:bracket_locked_' . $this->id;
+        }
+
+        /**
+         * Generator for the admin voting locked cache key.
+         * Uses a separate key from _lockedCacheKey (bracket_locked) so that the procedural
+         * lock during advance/rollback and the admin-controlled lock don't conflict —
+         * advance can run without waiting for admin to unlock, and _vote() checks both.
+         */
+        private function _votingLockedCacheKey() {
+            return 'Api:Bracket:voting_locked_' . $this->id;
+        }
+
+        /**
+         * Returns whether admin has locked voting for this bracket
+         */
+        public function isVotingLocked() {
+            return (bool) Lib\Cache::getInstance()->get($this->_votingLockedCacheKey(), true);
+        }
+
+        /**
+         * Sets the admin voting lock state
+         */
+        public function setVotingLocked(bool $locked) {
+            $cache = Lib\Cache::getInstance();
+            $cache->set($this->_votingLockedCacheKey(), $locked ? 1 : 0, CACHE_VERY_LONG);
         }
 
     }

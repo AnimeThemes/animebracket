@@ -27,6 +27,7 @@ namespace Controller {
 
                 if ($out) {
                     $out->bracket = $bracket;
+                    $out->votingLocked = $bracket->isVotingLocked();
                     $out->showCaptcha = false;
                     $out->csrfToken = $user->csrfToken;
                     $bracketMinAge = (int) $bracket->minAge;

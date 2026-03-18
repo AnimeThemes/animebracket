@@ -56,9 +56,32 @@ namespace Controller\Admin {
           case 'character':
             self::_updateCharacter($bracket);
             break;
+          case 'lock-voting':
+            self::_lockVoting($bracket);
+            break;
         }
       }
 
+    }
+
+    /**
+     * Toggles the admin voting lock for a bracket. When locked, users cannot submit votes.
+     * Accepts action=lock or action=unlock via POST; returns JSON { success, locked }.
+     */
+    private static function _lockVoting(Api\Bracket $bracket) {
+      $action = Lib\Url::Post('action');
+      if ($action === 'lock') {
+        $locked = true;
+      } else if ($action === 'unlock') {
+        $locked = false;
+      } else {
+        $out = (object)[ 'success' => false, 'message' => 'Invalid action' ];
+        Lib\Display::renderJson($out);
+        return;
+      }
+      $bracket->setVotingLocked($locked);
+      $out = (object)[ 'success' => true, 'locked' => $locked ];
+      Lib\Display::renderJson($out);
     }
 
     public static function _displayNominations(Api\Bracket $bracket, $jsonOnly = false, $message = null) {
