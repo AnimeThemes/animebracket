@@ -123,6 +123,9 @@ namespace Controller {
                 $out->message = 'Invalid parameters';
             } else if ($bracket->isLocked()) {
                 $out->message = 'Voting is closed for this round. Please refresh to see the latest round.';
+            } else if ($bracket->isVotingLocked()) {
+                $out->message = 'Voting has temporarily been locked by contest admins.';
+                return $out;
             } else if ($bracket->state !== BS_ELIMINATIONS && $bracket->state !== BS_VOTING) {
                 $out->message = 'Voting is closed on this bracket';
                 $out->code = 'closed';
