@@ -1,5 +1,5 @@
 import classnames from 'classnames';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, Fragment } from 'react';
 import ReactDOM from 'react-dom';
 import ReCAPTCHA from 'react-google-recaptcha';
 import { Route } from 'molecule-router';
@@ -44,8 +44,10 @@ const Vote = ({ rounds, bracket, showCaptcha, meetsAgeRequirement, votingLocked 
   };
 
   const handleCopyClick = async () => {
-    let markdownStr = Object.keys(ballot).reduce((acc, roundId) => {
-      const { character1, character2 } = ballot[roundId];
+    let markdownStr = (rounds || []).reduce((acc, round) => {
+      const roundData = ballot[round.id];
+      if (!roundData) return acc;
+      const { character1, character2 } = roundData;
       const character1Md = `[${character1.voted ? '**' : '~~'}${character1.name}${character1.voted ? '**' : '~~'}](${character1.image})`;
       const character2Md = `[${character2.voted ? '**' : '~~'}${character2.name}${character2.voted ? '**' : '~~'}](${character2.image})`;
       return `${acc}- ${character1Md} - ${character2Md}\n`;
@@ -101,10 +103,13 @@ const Vote = ({ rounds, bracket, showCaptcha, meetsAgeRequirement, votingLocked 
             },
           )}
         >
-          {Object.keys(ballot).map(roundId => {
-            const { character1, character2 } = ballot[roundId];
+          {(rounds || []).map(round => {
+            const roundData = ballot[round.id];
+            if (!roundData) return null;
+            const roundId = round.id;
+            const { character1, character2 } = roundData;
             return (
-              <>
+              <Fragment key={roundId}>
                 <li
                   className={classnames(
                     'mini-card',
@@ -126,7 +131,7 @@ const Vote = ({ rounds, bracket, showCaptcha, meetsAgeRequirement, votingLocked 
                     <BallotEntrant roundId={roundId} {...character2} />
                   </li>
                 )}
-              </>
+              </Fragment>
             );
           })}
         </ul>
