@@ -220,6 +220,13 @@ namespace Api {
 
                     }
 
+                    // Only shuffle for eliminations (tier 0) so each user sees a different order
+                    if ($tier == 0 && count($retVal) > 1) {
+                        $seed = crc32($user->id . '_' . $bracketId . '_' . $tier . '_' . ($group !== false ? $group : 'all'));
+                        mt_srand($seed);
+                        shuffle($retVal);
+                    }
+
                 }
 
                 $cache->set($cacheKey, $retVal);
