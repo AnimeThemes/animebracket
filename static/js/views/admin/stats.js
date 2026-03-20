@@ -43,8 +43,8 @@ export default Route('admin-stats', {
     const userCount = [];
 
     data.forEach((item) => {
-      const label = item.tier === 0 ? 'Eliminations' : `Round ${item.tier}`;
-      labels.push(`${label}, Group ${String.fromCharCode(item.group + 65)}`);
+      // Server sets label (stage + optional group); falsy → Unknown
+      labels.push(item.label || 'Unknown');
       totalVotes.push(item.total);
       userCount.push(item.userTotal);
     });
