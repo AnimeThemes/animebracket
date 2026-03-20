@@ -501,7 +501,7 @@ namespace Api {
 
                     ksort($byTier, SORT_NUMERIC);
 
-                    // (4) Combined tier → single row (group null, $aggByTier); split → keep proc rows; then sort.
+                    // (4) Combined tier → single row (group null, $aggByTier); split → keep proc rows
                     $retVal = [];
                     foreach ($byTier as $tier => $groups) {
                         ksort($groups, SORT_NUMERIC);
@@ -519,14 +519,6 @@ namespace Api {
                             }
                         }
                     }
-
-                    usort($retVal, function($a, $b) {
-                        $cmp = $a->tier - $b->tier;
-                        if ($cmp !== 0) {
-                            return $cmp;
-                        }
-                        return ($a->group ?? 0) - ($b->group ?? 0);
-                    });
 
                     // (5) Generate labels
                     foreach ($retVal as $row) {
