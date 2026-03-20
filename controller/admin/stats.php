@@ -13,7 +13,7 @@ namespace Controller\Admin {
             $bracket = self::_getBracket(array_shift($params));
             if ($bracket) {
                 $stats = Api\Round::getVotingStats($bracket->id);
-                if ($stats) {
+                if ($stats !== null) {
                     $out = new stdClass;
                     $out->bracket = $bracket;
                     $out->stats = $stats;
