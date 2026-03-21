@@ -36,6 +36,16 @@ namespace Api {
         protected $_dbPrimaryKey = 'id';
 
         /**
+         * Groups with this many or fewer matchups are combined for voting (see getBracketRounds, getVotingStats).
+         */
+        const COMBINE_GROUP_THRESHOLD = 2;
+
+        /**
+         * getVotingStats: merge whole tier when total matchups in tier <= this.
+         */
+        const COMBINE_TIER_MAX_TOTAL_MATCHUPS = 4;
+
+        /**
          * Round ID
          */
         public $id = 0;
@@ -152,15 +162,10 @@ namespace Api {
                     $params['group'] = $group;
 
                     // Check number of "round"s there are in the group. If <= 2, come back and get them all
-                    $result = self::createQuery()
-                        ->count('total')
-                        ->where('bracketId', $bracketId)
-                        ->where('tier', $tier)
-                        ->where('group', $group)
-                        ->where('deleted', 0)
-                        ->execute();
-                    $row = Lib\Db::Fetch($result);
-                    if (is_object($row) && (int)$row->total <= 2) {
+                    $countsByTier = self::getRoundCountsByGroup($bracketId, $tier);
+                    $counts = $countsByTier[$tier] ?? [];
+                    $groupCount = $counts[$group] ?? 0;
+                    if ($groupCount <= self::COMBINE_GROUP_THRESHOLD) {
                         $retVal = self::getBracketRounds($bracketId, $tier, false, $ignoreCache);
                         $result = null;
                     } else {
@@ -322,6 +327,39 @@ namespace Api {
         }
 
         /**
+         * Matchup counts per tier and group (non-deleted rounds only).
+         * Always returns [ tier => [ group => count ] ]. When $tier is set, only that tier is queried.
+         *
+         * @param int $bracketId
+         * @param int|null $tier If set, restrict to this tier (same shape: one key in the outer map).
+         * @return array
+         */
+        public static function getRoundCountsByGroup($bracketId, $tier = null) {
+            $retVal = [];
+            $query = self::createQuery()
+                ->select([ 'tier', 'group' ])
+                ->count('cnt')
+                ->where('bracketId', $bracketId)
+                ->where('deleted', 0);
+            if ($tier !== null) {
+                $query = $query->where('tier', $tier);
+            }
+            $result = $query->groupBy([ 'tier', 'group' ])->execute();
+            if ($result && $result->comm) {
+                while ($row = Lib\Db::Fetch($result)) {
+                    $t = (int) $row->round_tier;
+                    $g = (int) $row->round_group;
+                    if (!isset($retVal[$t])) {
+                        $retVal[$t] = [];
+                    }
+                    $retVal[$t][$g] = (int) $row->cnt;
+                }
+                $result->comm->closeCursor();
+            }
+            return $retVal;
+        }
+
+        /**
          * Gets the highest tier set up in the bracket
          */
         public static function getCurrentRounds($bracketId, $ignoreCache = false) {
@@ -397,23 +435,101 @@ namespace Api {
             return $retVal;
         }
 
+        /**
+         * Admin chart series
+         * 
+         * @return array<int, stdClass> { total, userTotal, tier, group|null, label }
+         */
         public static function getVotingStats($bracketId) {
             $retVal = null;
             if (is_numeric($bracketId)) {
                 $retVal = Lib\Cache::getInstance()->fetch(function() use ($bracketId) {
-                    $retVal = null;
+                    // Step 1: load proc rows into a tier/group map.
                     $result = Lib\Db::Query('CALL proc_GetBracketVotingStats(:bracketId)', [ 'bracketId' => $bracketId ]);
-                    if ($result && $result->count) {
-                        $retVal = [];
+                    $byTier = [];
+                    if ($result && $result->comm) {
                         while ($row = Lib\Db::Fetch($result)) {
-                            $obj = new stdClass;
-                            $obj->total = (int) $row->total;
-                            $obj->userTotal = (int) $row->user_total;
-                            $obj->tier = (int) $row->round_tier;
-                            $obj->group = (int) $row->round_group;
-                            $retVal[] = $obj;
+                            $chartRow = new stdClass;
+                            $chartRow->total = (int) $row->total;
+                            $chartRow->userTotal = (int) $row->user_total;
+                            $chartRow->tier = (int) $row->round_tier;
+                            $chartRow->group = (int) $row->round_group;
+                            $byTier[$chartRow->tier][$chartRow->group] = $chartRow;
+                        }
+                        // Stored-proc result must be closed before running another query.
+                        $result->comm->closeCursor();
+                    }
+
+                    if (empty($byTier)) {
+                        return [];
+                    }
+
+                    // Step 2: decide which tiers should be merged.
+                    $countsByTier = self::getRoundCountsByGroup($bracketId, null);
+                    $matchupsByTier = [];
+                    $mergedTiers = [];
+                    foreach (array_keys($byTier) as $tier) {
+                        $counts = $countsByTier[$tier] ?? [];
+                        if (empty($counts)) {
+                            continue;
+                        }
+                        $matchupsByTier[(int) $tier] = array_sum($counts);
+                        if (max($counts) <= self::COMBINE_GROUP_THRESHOLD
+                            || $matchupsByTier[(int) $tier] <= self::COMBINE_TIER_MAX_TOTAL_MATCHUPS) {
+                            $mergedTiers[] = (int) $tier;
                         }
                     }
+                    $mergedTiersSet = array_flip($mergedTiers);
+
+                    // Step 3: roll up totals for merged tiers only.
+                    $rollupsByTier = [];
+                    if (!empty($mergedTiers)) {
+                        $tierIn = implode(',', array_map('intval', $mergedTiers));
+                        $aggSql = 'SELECT r.round_tier AS tier, COUNT(1) AS total, COUNT(DISTINCT v.user_id) AS user_total '
+                            . 'FROM votes v INNER JOIN round r ON r.round_id = v.round_id '
+                            . 'WHERE v.bracket_id = :bracketId AND r.round_deleted = 0 '
+                            . 'AND r.round_tier IN (' . $tierIn . ') '
+                            . 'GROUP BY r.round_tier';
+                        $aggResult = Lib\Db::Query($aggSql, [ ':bracketId' => $bracketId ]);
+                        if ($aggResult && $aggResult->comm) {
+                            while ($aggRow = Lib\Db::Fetch($aggResult)) {
+                                $rollupsByTier[(int) $aggRow->tier] = [
+                                    'total' => (int) $aggRow->total,
+                                    'userTotal' => (int) $aggRow->user_total,
+                                ];
+                            }
+                            $aggResult->comm->closeCursor();
+                        }
+                    }
+
+                    ksort($byTier, SORT_NUMERIC);
+
+                    // Step 4: build output rows in tier/group order.
+                    $retVal = [];
+                    foreach ($byTier as $tier => $groups) {
+                        ksort($groups, SORT_NUMERIC);
+                        if (isset($mergedTiersSet[(int) $tier])) {
+                            $tierRollup = $rollupsByTier[(int) $tier] ?? [ 'total' => 0, 'userTotal' => 0 ];
+                            $chartRow = new stdClass;
+                            $chartRow->total = $tierRollup['total'];
+                            $chartRow->userTotal = $tierRollup['userTotal'];
+                            $chartRow->tier = (int) $tier;
+                            $chartRow->group = null;
+                            $retVal[] = $chartRow;
+                        } else {
+                            foreach ($groups as $groupRow) {
+                                $retVal[] = $groupRow;
+                            }
+                        }
+                    }
+
+                    // Step 5: add chart labels on the server.
+                    foreach ($retVal as $chartRow) {
+                        $tier = (int) $chartRow->tier;
+                        $matchupsInTier = $matchupsByTier[$tier] ?? 0;
+                        $chartRow->label = self::_votingStatsChartLabel($tier, $chartRow->group, $matchupsInTier);
+                    }
+
                     return $retVal;
                 }, 'Api:Round:getVotingStates_' . $bracketId);
             }
@@ -522,6 +638,33 @@ namespace Api {
 
             return $retVal;
 
+        }
+
+        /** @param int|null $group null when getVotingStats emitted a combined tier row */
+        private static function _votingStatsChartLabel($tier, $group, $matchupsInTier) {
+            // $matchupsInTier = array_sum of matchup counts for this tier (all groups).
+            if ((int) $tier === 0) {
+                if ($group === null) {
+                    return 'Eliminations';
+                }
+                return 'Eliminations, Group ' . chr(65 + (int) $group);
+            }
+
+            switch ($matchupsInTier) {
+                case 4:
+                    return 'Quarter Finals';
+                case 2:
+                    return 'Semi Finals';
+                case 1:
+                    return 'Title Match';
+            }
+
+            $base = 'Round ' . (int) $tier;
+            if ($group !== null) {
+                $base .= ', Group ' . chr(65 + (int) $group);
+            }
+
+            return $base;
         }
 
         /**
