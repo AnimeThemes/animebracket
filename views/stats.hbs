@@ -1,7 +1,12 @@
 <header>
   <h2>{{bracket.name}}</h2>
 </header>
-<h3>Entrant Statistics</h3>
+<div class="entrant-stats__heading">
+  <h3>Entrant Statistics</h3>
+  {{#if entrantStatsExcludesThirdPlace}}
+  <i><p class="entrant-stats__note">*Third-place match not included.</p></i>
+  {{/if}}
+</div>
 <div id="reactApp"></div>
 <script>
   window._appData = {

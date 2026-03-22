@@ -3,11 +3,13 @@ import { Route, Router } from 'molecule-router';
 import $ from 'jquery';
 
 import Entrant from '../model/entrant';
+import Round from '../model/round';
 import { default as Tier, ENTRANT_HEIGHT } from '../model/tier';
 
 import TPL_GROUP_PICKER from '@views/groupPicker.hbs';
 import TPL_ENTRANT from '@views/partials/_entrant.hbs';
 import TPL_WINNER from '@views/winner.hbs';
+import TIER_TMPL from '@views/tier.hbs';
 
 const SINGLETON_NAME = 'bracket-display';
 const COLUMN_WIDTH = 225 + 18;
@@ -16,6 +18,7 @@ export default Route(SINGLETON_NAME,{
 
   __construct() {
     this._tiers = [];
+    this._thirdPlaceByGroup = {};
     this._$content = $('.bracket-display');
     this._$body = $('body');
     this._$header = $('header');
@@ -89,8 +92,138 @@ export default Route(SINGLETON_NAME,{
       left += TPL_WINNER(winner);
     }
 
-    // Add an additional column for the winner
-    this._$content.width(++columns * COLUMN_WIDTH).html(left + right);
+    const treeHtml = left + right;
+    // Third-place block only for "Finals" / "Full" views (both pass group === null); hide for per-group (A, B, …).
+    const thirdRaw = this._thirdPlaceShownForResultsView(group)
+      ? this._getThirdPlaceRawForView(group)
+      : null;
+    const thirdHtml = thirdRaw ? this._renderThirdPlaceBlock(thirdRaw) : '';
+
+    // Add an additional column for the winner; optional third-place row below
+    this._$content
+      .width(++columns * COLUMN_WIDTH)
+      .css('position', 'relative')
+      .html(`<div class="bracket-main-tree">${treeHtml}</div>${thirdHtml}`);
+
+    this._$content.find('.bracket-third-connectors').remove();
+    if (thirdRaw) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => this._drawThirdPlaceConnectors());
+      });
+    }
+  },
+
+  _thirdPlaceShownForResultsView(group) {
+    return group === null || group === undefined;
+  },
+
+  _getThirdPlaceRawForView(group) {
+    const byG = this._thirdPlaceByGroup;
+    if (group === null || group === undefined) {
+      const keys = Object.keys(byG);
+      return keys.length ? byG[keys[0]] : null;
+    }
+    return byG[group] || null;
+  },
+
+  _renderThirdPlaceBlock(raw) {
+    const round = new Round(raw);
+    const e1 = round.entrant1;
+    const e2 = round.entrant2;
+    const cellH = ENTRANT_HEIGHT;
+    const r1 = {
+      id: round.id,
+      tier: round.tier,
+      entrant1: e1,
+      entrant2: e2,
+      final: round.final
+    };
+    const sideHtml = TIER_TMPL({
+      side: 'left',
+      height: cellH,
+      rounds: [r1]
+    });
+    return `
+      <div class="bracket-third-place-wrap">
+        <h3 class="bracket-third-place-heading">3rd place match</h3>
+        <div class="bracket-third-place-match">${sideHtml}</div>
+      </div>`;
+  },
+
+  _drawThirdPlaceConnectors() {
+    const $wrap = this._$content;
+    const $tree = $wrap.find('.bracket-main-tree');
+    const $third = $wrap.find('.bracket-third-place-match');
+    const $svg = $wrap.find('svg.bracket-third-connectors');
+    if (!$tree.length || !$third.length) {
+      return;
+    }
+
+    let maxT = 0;
+    $tree.find('.round[data-tier]').each((_, el) => {
+      const t = +$(el).data('tier');
+      if (t > maxT) {
+        maxT = t;
+      }
+    });
+    if (maxT < 2) {
+      return;
+    }
+
+    const semiEls = $tree.find('.round[data-tier]').filter((_, el) => +$(el).data('tier') === maxT - 1).get();
+    if (semiEls.length !== 2) {
+      return;
+    }
+
+    semiEls.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+
+    const cRect = $wrap[0].getBoundingClientRect();
+    const w = Math.max($wrap.outerWidth(), 1);
+    const h = Math.max($wrap[0].scrollHeight, 1);
+
+    let svg = $svg[0];
+    if (!svg) {
+      svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('class', 'bracket-third-connectors');
+      svg.setAttribute('pointer-events', 'none');
+      $wrap.prepend(svg);
+    }
+    svg.setAttribute('width', w);
+    svg.setAttribute('height', h);
+    svg.style.position = 'absolute';
+    svg.style.left = '0';
+    svg.style.top = '0';
+    svg.innerHTML = '';
+
+    const thirdRect = $third[0].getBoundingClientRect();
+    const yJoin = thirdRect.top - cRect.top - 10;
+
+    const entrants = $third.find('.entrant');
+    const xLeftEnt = entrants.length ? entrants.eq(0)[0].getBoundingClientRect() : thirdRect;
+    const xRightEnt = entrants.length > 1 ? entrants.eq(1)[0].getBoundingClientRect() : thirdRect;
+    const xTargetL = xLeftEnt.left + xLeftEnt.width / 2 - cRect.left;
+    const xTargetR = xRightEnt.left + xRightEnt.width / 2 - cRect.left;
+
+    const mkPath = (semiEl, toX) => {
+      const r = semiEl.getBoundingClientRect();
+      const midY = r.top + r.height / 2 - cRect.top;
+      const isLeft = semiEl === semiEls[0];
+      const x0 = isLeft ? r.right - cRect.left : r.left - cRect.left;
+      return `M ${x0} ${midY} L ${x0} ${yJoin} L ${toX} ${yJoin}`;
+    };
+
+    const pathL = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    pathL.setAttribute('d', mkPath(semiEls[0], xTargetL));
+    pathL.setAttribute('fill', 'none');
+    pathL.setAttribute('class', 'bracket-third-connector-path');
+
+    const pathR = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    pathR.setAttribute('d', mkPath(semiEls[1], xTargetR));
+    pathR.setAttribute('fill', 'none');
+    pathR.setAttribute('class', 'bracket-third-connector-path');
+
+    svg.appendChild(pathL);
+    svg.appendChild(pathR);
   },
 
   /**
@@ -178,8 +311,17 @@ export default Route(SINGLETON_NAME,{
         return retVal;
       });
 
+      this._thirdPlaceByGroup = {};
       for (let i = 0, count = bracketData.results.length; i < count; i++) {
-        let tier = new Tier(bracketData.results[i]);
+        const tierRows = bracketData.results[i];
+        for (let r = 0; r < tierRows.length; r++) {
+          const row = tierRows[r];
+          if (row && row.isThirdPlaceMatch) {
+            this._thirdPlaceByGroup[row.group] = row;
+          }
+        }
+        const filtered = tierRows.filter((row) => !row || !row.isThirdPlaceMatch);
+        let tier = new Tier(filtered);
         groups = tier.groups > groups ? tier.groups : groups;
         this._tiers.push(tier);
       }

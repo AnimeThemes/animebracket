@@ -717,7 +717,8 @@ CREATE TABLE `round` (
   `round_character1_votes` int(11) DEFAULT NULL,
   `round_character2_votes` int(11) DEFAULT NULL,
   `round_end_date` int(11) DEFAULT NULL,
-  `round_deleted` tinyint(4) NOT NULL DEFAULT '0'
+  `round_deleted` tinyint(4) NOT NULL DEFAULT '0',
+  `round_is_third_place_match` tinyint(1) NOT NULL DEFAULT '0'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
 -- --------------------------------------------------------

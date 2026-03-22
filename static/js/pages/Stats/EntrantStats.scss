@@ -11,9 +11,29 @@
     }
   }
 
-  h3 {
-    @include sub-heading;
-    color: $dark;
+  .entrant-stats__heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    column-gap: spacing(3);
+    row-gap: spacing(1);
+    margin-bottom: 40px;
+
+    h3 {
+      @include sub-heading;
+      color: $dark;
+      margin-bottom: 0;
+    }
+  }
+
+  .entrant-stats__note {
+    @include body;
+    color: $darkGrey;
+    font-size: 1.4rem;
+    line-height: 1.35;
+    margin: 0;
+    flex: 1 1 12rem;
+    min-width: min(100%, 16rem);
   }
 }
 

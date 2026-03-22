@@ -16,6 +16,9 @@ namespace Api {
 
     class Bracket extends Lib\Dal {
 
+        /** Enables the title + third-place finals layer. */
+        const THIRD_PLACE_MATCH_ENABLED = true;
+
         public static $CAPTCHA_STATUS = [
             'NEVER' => 0,
             'RANDOM' => 1,
@@ -280,8 +283,9 @@ namespace Api {
                     $rounds = Round::getRoundsByTier($this->id, $i + 1);
                     $roundCount = count($rounds);
                     $groupRoundCount = $baseRounds / $groups;
+                    $slotsThisTier = $baseRounds;
 
-                    for ($j = 0; $j < $baseRounds; $j++) {
+                    for ($j = 0; $j < $slotsThisTier; $j++) {
                         if ($j < $roundCount) {
 
                             // Numericize where needed
@@ -315,6 +319,28 @@ namespace Api {
                             $rounds[] = $round;
                         }
 
+                    }
+
+                    if (self::THIRD_PLACE_MATCH_ENABLED && $roundCount > $slotsThisTier) {
+                        $round = $rounds[$slotsThisTier] ?? null;
+                        if ($round && !isset($round->filler)) {
+                            $round->id = (int) $round->id;
+                            $round->order = (int) $round->order;
+                            $round->group = (int) $round->group;
+                            $round->tier = (int) $round->tier;
+                            $round->character1->id = (int) $round->character1->id;
+                            $round->character2->id = (int) $round->character2->id;
+                            if ($round->final) {
+                                $round->character1->votes = (int) $round->character1Votes;
+                                $round->character2->votes = (int) $round->character2Votes;
+                            }
+                            unset($round->bracketId);
+                            unset($round->character1Id);
+                            unset($round->character2Id);
+                            unset($round->character1->bracketId);
+                            unset($round->character2->bracketId);
+                            unset($round->voted);
+                        }
                     }
 
                     $retVal[] = $rounds;
@@ -370,6 +396,7 @@ namespace Api {
             // Force update various cached things
             $this->getResults(true);
             Round::getCurrentRounds($this->id, true);
+            Lib\Cache::getInstance()->set('Api:Round:getVotingStates_' . $this->id, false, 1);
 
             $this->_unlock();
             $this->setVotingLocked(false);
@@ -413,41 +440,97 @@ namespace Api {
         }
 
         /**
+         * Finalizes bracket-level winner/score state from the title round.
+         */
+        private function _closeBracketWithWinnerRound(Round $titleRound) {
+            $this->score = $this->getFinalScore();
+            $this->winner = $titleRound->getWinner();
+            $this->winnerCharacterId = $this->winner->id;
+            $this->state = BS_FINAL;
+            $this->sync();
+        }
+
+        /**
          * Advances a standard bracket tier
          */
         private function _advanceBracket() {
 
             $rounds = Round::getCurrentRounds($this->id, true);
-            if (count($rounds) > 1) {
-                for ($i = 0, $count = count($rounds); $i < $count; $i += 2) {
+            $matchupCount = is_array($rounds) ? count($rounds) : 0;
+
+            // If the active pair is title + third place, finalize both together
+            // and close the bracket from the title winner.
+            if ($rounds && self::THIRD_PLACE_MATCH_ENABLED && $matchupCount === 2) {
+                $order0 = (int) $rounds[0]->order;
+                $order1 = (int) $rounds[1]->order;
+                $sameTierAndGroup = (int) $rounds[0]->tier === (int) $rounds[1]->tier
+                    && (int) $rounds[0]->group === (int) $rounds[1]->group;
+                $titleAndThirdOrders = ($order0 === 0 && $order1 === 1)
+                    || ($order0 === 1 && $order1 === 0);
+                $thirdPlaceRound = $order0 === 1 ? $rounds[0] : $rounds[1];
+                if ($sameTierAndGroup && $titleAndThirdOrders && !empty($thirdPlaceRound->isThirdPlaceMatch)) {
+                    foreach ($rounds as $round) {
+                        $round->finalizeRound();
+                    }
+                    $titleRound = $order0 === 0 ? $rounds[0] : $rounds[1];
+                    $this->_closeBracketWithWinnerRound($titleRound);
+                    Lib\Cache::getInstance()->set('Api:Bracket:getResults_' . $this->id, false, 1);
+                    return;
+                }
+            }
+
+            if ($matchupCount > 1) {
+                // Advance each pair of open rounds into the next tier.
+                // Add third place only when exactly two open tournament rounds
+                // share the same tier (typical cross-group semis).
+                $shouldCreateThird = false;
+                if (self::THIRD_PLACE_MATCH_ENABLED && $matchupCount === 2) {
+                    $t0 = (int) $rounds[0]->tier;
+                    $shouldCreateThird = $t0 === (int) $rounds[1]->tier && $t0 >= 1;
+                }
+                for ($i = 0, $count = $matchupCount; $i < $count; $i += 2) {
 
                     // Get the round winners
                     $winner1 = $rounds[$i]->getWinnerId();
                     $winner2 = $rounds[$i + 1]->getWinnerId();
 
+                    $canonicalGroup = min((int) $rounds[$i]->group, (int) $rounds[$i + 1]->group);
+
                     // Create the round for the next tier
                     $newRound = new Round();
                     $newRound->bracketId = $this->id;
                     $newRound->tier = $rounds[$i]->tier + 1;
-                    $newRound->group = $rounds[$i]->group;
+                    $newRound->group = $canonicalGroup;
                     $newRound->order = $i / 2;
                     $newRound->character1Id = $winner1;
                     $newRound->character2Id = $winner2;
                     $newRound->sync();
+
+                    if ($shouldCreateThird) {
+                        $loser1 = $rounds[$i]->getLoserId();
+                        $loser2 = $rounds[$i + 1]->getLoserId();
+                        if ($loser1 && $loser2) {
+                            $thirdRound = new Round();
+                            $thirdRound->bracketId = $this->id;
+                            $thirdRound->tier = $newRound->tier;
+                            $thirdRound->group = $canonicalGroup;
+                            $thirdRound->order = 1;
+                            $thirdRound->character1Id = $loser1;
+                            $thirdRound->character2Id = $loser2;
+                            $thirdRound->isThirdPlaceMatch = 1;
+                            $thirdRound->sync();
+                        }
+                    }
 
                     // Finalize the current tier
                     $rounds[$i]->finalizeRound();
                     $rounds[$i + 1]->finalizeRound();
 
                 }
-            } else if (count($rounds) === 1) {
+            } else if ($matchupCount === 1) {
                 $round = $rounds[0];
                 $round->finalizeRound();
-                $this->score = $this->getFinalScore();
-                $this->winner = $round->getWinner();
-                $this->winnerCharacterId = $this->winner->id;
-                $this->state = BS_FINAL;
-                $this->sync();
+                $this->_closeBracketWithWinnerRound($round);
             } else {
                 // Somehow, there are no more open rounds, so get the last one and use the winner from
                 // that to close out the bracket
@@ -455,11 +538,7 @@ namespace Api {
                 if (count($round) === 1) {
                     // Get the total number of votes to use for the score
                     $round = $round[0];
-                    $this->score = $this->getFinalScore();
-                    $this->winner = $round->getWinner();
-                    $this->winnerCharacterId = $this->winner->id;
-                    $this->state = BS_FINAL;
-                    $this->sync();
+                    $this->_closeBracketWithWinnerRound($round);
                 }
             }
 
