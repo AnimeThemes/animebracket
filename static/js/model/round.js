@@ -5,6 +5,7 @@ export default function Round(data) {
   this.group = parseInt(data.group, 10);
   this.order = parseInt(data.order, 10);
   this.final = !!data.final;
+  this.isThirdPlaceMatch = !!data.isThirdPlaceMatch;
   if(data.character1) {
     this.entrants = 1;
     this.entrant1 = new Entrant(data.character1, 'top');

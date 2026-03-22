@@ -68,6 +68,12 @@ namespace Api {
                     $rounds = Round::queryReturnAll([ 'bracketId' => $bracket->id, 'tier' => [ 'gt' => 0 ] ], [ 'id' => 'asc' ]);
                 }
 
+                if (Bracket::THIRD_PLACE_MATCH_ENABLED && count($rounds)) {
+                    $rounds = array_values(array_filter($rounds, function ($r) {
+                        return empty($r->isThirdPlaceMatch);
+                    }));
+                }
+
                 // Create a hash out of the characters
                 $temp = [];
                 foreach ($characters as $character) {

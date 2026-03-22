@@ -21,7 +21,8 @@ namespace Controller {
         Lib\Display::addKey('CANONICAL_PATH', '/' . $bracket->perma . '/stats');
         Lib\Display::renderAndAddKey('content', 'stats', [
           'entrants' => $entrantStats,
-          'bracket' => $bracket
+          'bracket' => $bracket,
+          'entrantStatsExcludesThirdPlace' => Api\Bracket::THIRD_PLACE_MATCH_ENABLED,
         ]);
 
       }

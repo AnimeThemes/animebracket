@@ -33,6 +33,13 @@ namespace Controller\Admin {
                     for ($i = 0, $count = count($results); $i < $count; $i += 2) {
                         $round = $results[$i];
 
+                        // Title + third-place are parallel finals rows, not a feeder pair to merge upward.
+                        $includesThirdPlaceMatch = isset($round->isThirdPlaceMatch)
+                            || (isset($results[$i + 1]) && isset($results[$i + 1]->isThirdPlaceMatch));
+                        if ($includesThirdPlaceMatch) {
+                            continue;
+                        }
+
                         if (!isset($round->filler) && ($round->final || $round->dateEnded)) {
                             $query = Lib\Db::Query("SELECT round_id FROM `round` WHERE
                                     bracket_id = :bracketId AND
