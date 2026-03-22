@@ -125,39 +125,39 @@ $WINNER_DL_HEIGHT: 200px;
   }
 
   .bracket-third-place-match {
-    $tp-side-col: $ENTRANT_WIDTH + $ENTRANT_AFTER;
-    $tp-winner-img: $ENTRANT_HEIGHT;
-    $tp-winner-col: 168px;
-    $tp-dl-height: $tp-winner-img + 48px;
-    // Portrait position inside the winner dl (increase = lower vs side entrants).
-    $tp-winner-img-offset-top: 24px;
+    $tp-center-col: 168px;
+    $tp-dl-height: $ENTRANT_HEIGHT + 48px;
 
-    width: 2 * $tp-side-col + $tp-winner-col;
+    width: 2 * ($ENTRANT_WIDTH + $ENTRANT_AFTER) + $tp-center-col;
     margin-left: auto;
     margin-right: auto;
     text-align: left;
 
-    ol.tier.winner,
-    .tier.winner .winner--third-place {
-      width: $tp-winner-col;
-    }
+    ol.tier.winner {
+      width: $tp-center-col;
 
-    .tier.winner .winner--third-place dl {
-      width: $tp-winner-col;
-      height: $tp-dl-height;
-      margin-top: $tp-dl-height / -2;
-    }
+      .winner--third-place {
+        width: 100%;
 
-    .tier.winner .winner--third-place img {
-      width: $tp-winner-img;
-      height: $tp-winner-img;
-      margin-top: $tp-winner-img-offset-top;
-    }
+        dl {
+          width: 100%;
+          height: $tp-dl-height;
+          margin-top: $tp-dl-height / -2;
+        }
 
-    .tier.winner .winner--third-place h2 {
-      font-size: 18px;
-      line-height: 1.2;
-      margin-top: 6px;
+        img {
+          width: $ENTRANT_HEIGHT;
+          height: $ENTRANT_HEIGHT;
+          // Center portrait in dl (matches side entrant row center).
+          margin-top: ($tp-dl-height - $ENTRANT_HEIGHT) / 2;
+        }
+
+        h2 {
+          font-size: 18px;
+          line-height: 1.2;
+          margin-top: 6px;
+        }
+      }
     }
 
     &::after {
