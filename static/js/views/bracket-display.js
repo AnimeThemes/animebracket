@@ -101,15 +101,7 @@ export default Route(SINGLETON_NAME,{
     // Add an additional column for the winner; optional third-place row below
     this._$content
       .width(++columns * COLUMN_WIDTH)
-      .css('position', 'relative')
       .html(`<div class="bracket-main-tree">${treeHtml}</div>${thirdHtml}`);
-
-    this._$content.find('.bracket-third-connectors').remove();
-    if (thirdRaw) {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => this._drawThirdPlaceConnectors());
-      });
-    }
   },
 
   _thirdPlaceShownForResultsView(group) {
@@ -171,82 +163,6 @@ export default Route(SINGLETON_NAME,{
         <h3 class="bracket-third-place-heading">3rd place match</h3>
         <div class="bracket-third-place-match">${sideHtml}</div>
       </div>`;
-  },
-
-  _drawThirdPlaceConnectors() {
-    const $wrap = this._$content;
-    const $tree = $wrap.find('.bracket-main-tree');
-    const $third = $wrap.find('.bracket-third-place-match');
-    const $svg = $wrap.find('svg.bracket-third-connectors');
-    if (!$tree.length || !$third.length) {
-      return;
-    }
-
-    let maxT = 0;
-    $tree.find('.round[data-tier]').each((_, el) => {
-      const t = +$(el).data('tier');
-      if (t > maxT) {
-        maxT = t;
-      }
-    });
-    if (maxT < 2) {
-      return;
-    }
-
-    const semiEls = $tree.find('.round[data-tier]').filter((_, el) => +$(el).data('tier') === maxT - 1).get();
-    if (semiEls.length !== 2) {
-      return;
-    }
-
-    semiEls.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
-
-    const cRect = $wrap[0].getBoundingClientRect();
-    const w = Math.max($wrap.outerWidth(), 1);
-    const h = Math.max($wrap[0].scrollHeight, 1);
-
-    let svg = $svg[0];
-    if (!svg) {
-      svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('class', 'bracket-third-connectors');
-      svg.setAttribute('pointer-events', 'none');
-      $wrap.prepend(svg);
-    }
-    svg.setAttribute('width', w);
-    svg.setAttribute('height', h);
-    svg.style.position = 'absolute';
-    svg.style.left = '0';
-    svg.style.top = '0';
-    svg.innerHTML = '';
-
-    const thirdRect = $third[0].getBoundingClientRect();
-    const yJoin = thirdRect.top - cRect.top - 10;
-
-    const entrants = $third.find('.entrant');
-    const xLeftEnt = entrants.length ? entrants.eq(0)[0].getBoundingClientRect() : thirdRect;
-    const xRightEnt = entrants.length > 1 ? entrants.eq(1)[0].getBoundingClientRect() : thirdRect;
-    const xTargetL = xLeftEnt.left + xLeftEnt.width / 2 - cRect.left;
-    const xTargetR = xRightEnt.left + xRightEnt.width / 2 - cRect.left;
-
-    const mkPath = (semiEl, toX) => {
-      const r = semiEl.getBoundingClientRect();
-      const midY = r.top + r.height / 2 - cRect.top;
-      const isLeft = semiEl === semiEls[0];
-      const x0 = isLeft ? r.right - cRect.left : r.left - cRect.left;
-      return `M ${x0} ${midY} L ${x0} ${yJoin} L ${toX} ${yJoin}`;
-    };
-
-    const pathL = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    pathL.setAttribute('d', mkPath(semiEls[0], xTargetL));
-    pathL.setAttribute('fill', 'none');
-    pathL.setAttribute('class', 'bracket-third-connector-path');
-
-    const pathR = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    pathR.setAttribute('d', mkPath(semiEls[1], xTargetR));
-    pathR.setAttribute('fill', 'none');
-    pathR.setAttribute('class', 'bracket-third-connector-path');
-
-    svg.appendChild(pathL);
-    svg.appendChild(pathR);
   },
 
   /**

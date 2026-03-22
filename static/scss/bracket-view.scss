@@ -146,17 +146,6 @@ $ENTRANT_AFTER: 18px;
     opacity: 0.65;
   }
 
-  .bracket-third-connectors {
-    z-index: 0;
-  }
-
-  .bracket-third-connector-path {
-    stroke: $standard;
-    stroke-width: 1px;
-    vector-effect: non-scaling-stroke;
-    stroke-dasharray: 4 4;
-  }
-
   .tier {
     list-style: none;
     margin: 0;
