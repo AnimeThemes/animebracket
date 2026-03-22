@@ -70,7 +70,7 @@ Tier.prototype = {
     let i = 0;
     let count = this._rounds.length;
 
-    if (group) {
+    if (undefined !== group && null !== group) {
       for (; i < count; i++) {
         if (this._rounds[i].group === group) {
           rounds.push(this._rounds[i]);
