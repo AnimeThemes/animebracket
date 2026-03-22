@@ -93,7 +93,6 @@ export default Route(SINGLETON_NAME,{
     }
 
     const treeHtml = left + right;
-    // Third-place block only for "Finals" / "Full" views (both pass group === null); hide for per-group (A, B, …).
     const thirdRaw = this._thirdPlaceShownForResultsView(group)
       ? this._getThirdPlaceRawForView(group)
       : null;
@@ -114,16 +113,38 @@ export default Route(SINGLETON_NAME,{
   },
 
   _thirdPlaceShownForResultsView(group) {
-    return group === null || group === undefined;
+    const enabled = !!(this._bracketData && this._bracketData.thirdPlaceMatchEnabled);
+    return enabled && (group === null || group === undefined);
   },
 
+  /** Return API third-place row, or synthesize a placeholder row. */
   _getThirdPlaceRawForView(group) {
+    // return third-place match data if it exists
     const byG = this._thirdPlaceByGroup;
-    if (group === null || group === undefined) {
-      const keys = Object.keys(byG);
-      return keys.length ? byG[keys[0]] : null;
+    const raw = byG[Object.keys(byG)[0]] ?? null;
+    if (raw) {
+      return raw;
     }
-    return byG[group] || null;
+
+    // otherwise uses placeholder data
+    const max = this.tiersForGroup(group);
+    if (max < 1) {
+      return null;
+    }
+    const rounds = this._tiers[max - 1].getRoundsForGroup(group);
+    if (!rounds.length) {
+      return null;
+    }
+    const anchor = rounds.find((r) => r.order === 0 && !r.isThirdPlaceMatch) || rounds[0];
+    return {
+      id: 0,
+      tier: anchor.tier,
+      group: anchor.group,
+      order: 1,
+      final: false,
+      filler: true,
+      isThirdPlaceMatch: true
+    };
   },
 
   _renderThirdPlaceBlock(raw) {
@@ -131,6 +152,7 @@ export default Route(SINGLETON_NAME,{
     const e1 = round.entrant1;
     const e2 = round.entrant2;
     const cellH = ENTRANT_HEIGHT;
+    const isPlaceholder = !!raw.filler;
     const r1 = {
       id: round.id,
       tier: round.tier,
@@ -143,8 +165,9 @@ export default Route(SINGLETON_NAME,{
       height: cellH,
       rounds: [r1]
     });
+    const wrapMod = isPlaceholder ? ' bracket-third-place-wrap--placeholder' : '';
     return `
-      <div class="bracket-third-place-wrap">
+      <div class="bracket-third-place-wrap${wrapMod}">
         <h3 class="bracket-third-place-heading">3rd place match</h3>
         <div class="bracket-third-place-match">${sideHtml}</div>
       </div>`;
