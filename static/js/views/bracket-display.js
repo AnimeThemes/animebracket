@@ -98,10 +98,7 @@ export default Route(SINGLETON_NAME,{
       : null;
     const thirdHtml = thirdRaw ? this._renderThirdPlaceBlock(thirdRaw) : '';
 
-    // Add an additional column for the winner; optional third-place row below
-    this._$content
-      .width(++columns * COLUMN_WIDTH)
-      .html(`<div class="bracket-main-tree">${treeHtml}</div>${thirdHtml}`);
+    this._$content.width(++columns * COLUMN_WIDTH).html(treeHtml + thirdHtml);
   },
 
   _thirdPlaceShownForResultsView(group) {
