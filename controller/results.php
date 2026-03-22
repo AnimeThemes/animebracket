@@ -12,6 +12,7 @@ namespace Controller {
             $perma = array_shift($params);
             $bracket = Api\Bracket::getBracketByPerma($perma);
             if ($bracket) {
+                $bracket->thirdPlaceMatchEnabled = Api\Bracket::THIRD_PLACE_MATCH_ENABLED;
                 $bracket->results = $bracket->getResults();
                 $user = Api\User::getCurrentUser();
                 if ($user) {
