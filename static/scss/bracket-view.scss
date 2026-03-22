@@ -29,6 +29,8 @@ $ENTRANT_HEIGHT: 50px;
 $ENTRANT_WIDTH: 225px;
 $ENTRANT_SPACING: 25px;
 $ENTRANT_AFTER: 18px;
+$WINNER_IMG_SIZE: 150px;
+$WINNER_DL_HEIGHT: 200px;
 
 .results {
   position: relative;
@@ -118,18 +120,50 @@ $ENTRANT_AFTER: 18px;
   }
 
   .bracket-third-place-heading {
-    @include heading();
     font-size: 18px;
-    margin: 0 0 8px;
     color: $dark;
   }
 
   .bracket-third-place-match {
-    display: inline-block;
-    vertical-align: top;
+    $tp-side-col: $ENTRANT_WIDTH + $ENTRANT_AFTER;
+    $tp-winner-img: $ENTRANT_HEIGHT;
+    $tp-winner-col: 168px;
+    $tp-dl-height: $tp-winner-img + 48px;
+    // Portrait position inside the winner dl (increase = lower vs side entrants).
+    $tp-winner-img-offset-top: 24px;
 
-    .tier {
-      float: none;
+    width: 2 * $tp-side-col + $tp-winner-col;
+    margin-left: auto;
+    margin-right: auto;
+    text-align: left;
+
+    ol.tier.winner,
+    .tier.winner .winner--third-place {
+      width: $tp-winner-col;
+    }
+
+    .tier.winner .winner--third-place dl {
+      width: $tp-winner-col;
+      height: $tp-dl-height;
+      margin-top: $tp-dl-height / -2;
+    }
+
+    .tier.winner .winner--third-place img {
+      width: $tp-winner-img;
+      height: $tp-winner-img;
+      margin-top: $tp-winner-img-offset-top;
+    }
+
+    .tier.winner .winner--third-place h2 {
+      font-size: 18px;
+      line-height: 1.2;
+      margin-top: 6px;
+    }
+
+    &::after {
+      content: '';
+      display: table;
+      clear: both;
     }
   }
 
@@ -187,16 +221,16 @@ $ENTRANT_AFTER: 18px;
       }
 
       img {
-        width: 150px;
-        height: 150px;
+        width: $WINNER_IMG_SIZE;
+        height: $WINNER_IMG_SIZE;
       }
 
       dl {
         width: $ENTRANT_WIDTH + $ENTRANT_AFTER;
         position: absolute;
-        height: 200px;
+        height: $WINNER_DL_HEIGHT;
         top: 50%;
-        margin-top: -100px;
+        margin-top: $WINNER_DL_HEIGHT / -2;
         &:before {
           display: block;
           content: '';

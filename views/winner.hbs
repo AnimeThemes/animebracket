@@ -1,6 +1,6 @@
 <ol class="tier left winner">
     <li class="round single-entrant">
-        <div data-id="{{entrant.id}}" class="winner" style="height:{{height}}px;">
+        <div data-id="{{entrant.id}}" class="winner{{#if modifierClass}} {{modifierClass}}{{/if}}" style="height:{{height}}px;">
             <dl>
                 <dt>Image</dt>
                 <dd><img src="{{entrant.image}}" alt="{{entrant.name}}" /></dd>

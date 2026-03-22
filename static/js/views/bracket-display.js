@@ -13,12 +13,14 @@ import TIER_TMPL from '@views/tier.hbs';
 
 const SINGLETON_NAME = 'bracket-display';
 const COLUMN_WIDTH = 225 + 18;
+/** Third-place strip is one row; full bracket height would center entrants far below the heading. */
+const THIRD_PLACE_ROW_HEIGHT = 60;
 
 export default Route(SINGLETON_NAME,{
 
   __construct() {
     this._tiers = [];
-    this._thirdPlaceByGroup = {};
+    this._thirdPlaceRound = null;
     this._$content = $('.bracket-display');
     this._$body = $('body');
     this._$header = $('header');
@@ -48,6 +50,19 @@ export default Route(SINGLETON_NAME,{
     return retVal;
   },
 
+  _pickShownWinnerEntrant(entrant1, entrant2) {
+    if (!entrant1.votes && !entrant2.votes) {
+      return new Entrant(null, 0);
+    }
+    if (entrant1.votes > entrant2.votes) {
+      return entrant1;
+    }
+    if (entrant1.votes < entrant2.votes) {
+      return entrant2;
+    }
+    return entrant1.seed < entrant2.seed ? entrant1 : entrant2;
+  },
+
   renderBracket(group, tier) {
     let left = '';
     let right = '';
@@ -71,24 +86,10 @@ export default Route(SINGLETON_NAME,{
     // Render the winner
     lastRound = this._tiers[max - 1].getRound(0, group);
     if (null !== lastRound && null !== lastRound.entrant1 && null != lastRound.entrant2) {
-      if (!lastRound.entrant1.votes && !lastRound.entrant2.votes) {
-        winner = { entrant:new Entrant(null, 0) };
-      } else {
-        if (lastRound.entrant1.votes > lastRound.entrant2.votes) {
-          winner = { entrant: lastRound.entrant1 };
-        } else if (lastRound.entrant1.votes < lastRound.entrant2.votes) {
-          winner = { entrant: lastRound.entrant2 };
-        } else {
-          // In a tie scenario, use seed to determine winner.
-          winner = {
-            entrant: (
-              lastRound.entrant1.seed < lastRound.entrant2.seed ?
-                lastRound.entrant1 : lastRound.entrant2
-            )
-          }
-        }
-      }
-      winner.height = bracketHeight;
+      winner = {
+        entrant: this._pickShownWinnerEntrant(lastRound.entrant1, lastRound.entrant2),
+        height: bracketHeight
+      };
       left += TPL_WINNER(winner);
     }
 
@@ -109,10 +110,8 @@ export default Route(SINGLETON_NAME,{
   /** Return API third-place row, or synthesize a placeholder row. */
   _getThirdPlaceRawForView(group) {
     // return third-place match data if it exists
-    const byG = this._thirdPlaceByGroup;
-    const raw = byG[Object.keys(byG)[0]] ?? null;
-    if (raw) {
-      return raw;
+    if (this._thirdPlaceRound) {
+      return this._thirdPlaceRound;
     }
 
     // otherwise uses placeholder data
@@ -140,25 +139,29 @@ export default Route(SINGLETON_NAME,{
     const round = new Round(raw);
     const e1 = round.entrant1;
     const e2 = round.entrant2;
-    const cellH = ENTRANT_HEIGHT;
     const isPlaceholder = !!raw.filler;
-    const r1 = {
-      id: round.id,
-      tier: round.tier,
-      entrant1: e1,
-      entrant2: e2,
-      final: round.final
-    };
-    const sideHtml = TIER_TMPL({
+    const h = THIRD_PLACE_ROW_HEIGHT;
+    const roundHead = { id: round.id, tier: round.tier, final: round.final };
+    const leftTier = TIER_TMPL({
       side: 'left',
-      height: cellH,
-      rounds: [r1]
+      height: h,
+      rounds: [{ ...roundHead, entrant1: e1 }]
+    });
+    const rightTier = TIER_TMPL({
+      side: 'right',
+      height: h,
+      rounds: [{ ...roundHead, entrant1: e2 }]
+    });
+    const centerHtml = TPL_WINNER({
+      entrant: this._pickShownWinnerEntrant(e1, e2),
+      height: h,
+      modifierClass: 'winner--third-place'
     });
     const wrapMod = isPlaceholder ? ' bracket-third-place-wrap--placeholder' : '';
     return `
       <div class="bracket-third-place-wrap${wrapMod}">
-        <h3 class="bracket-third-place-heading">3rd place match</h3>
-        <div class="bracket-third-place-match">${sideHtml}</div>
+        <h3 class="bracket-third-place-heading">3rd Place Match</h3>
+        <div class="bracket-third-place-match">${leftTier}${centerHtml}${rightTier}</div>
       </div>`;
   },
 
@@ -247,13 +250,14 @@ export default Route(SINGLETON_NAME,{
         return retVal;
       });
 
-      this._thirdPlaceByGroup = {};
+      this._thirdPlaceRound = null;
       for (let i = 0, count = bracketData.results.length; i < count; i++) {
         const tierRows = bracketData.results[i];
         for (let r = 0; r < tierRows.length; r++) {
           const row = tierRows[r];
           if (row && row.isThirdPlaceMatch) {
-            this._thirdPlaceByGroup[row.group] = row;
+            this._thirdPlaceRound = row;
+            break;
           }
         }
         const filtered = tierRows.filter((row) => !row || !row.isThirdPlaceMatch);
