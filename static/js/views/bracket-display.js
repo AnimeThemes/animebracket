@@ -13,8 +13,9 @@ import TIER_TMPL from '@views/tier.hbs';
 
 const SINGLETON_NAME = 'bracket-display';
 const COLUMN_WIDTH = 225 + 18;
-/** Third-place strip is one row; full bracket height would center entrants far below the heading. */
 const THIRD_PLACE_ROW_HEIGHT = 60;
+/** Pixels below the title-match cell vertical center to the top of the third-place strip. */
+const THIRD_PLACE_GAP_BELOW_TITLE_PX = 180;
 
 export default Route(SINGLETON_NAME,{
 
@@ -100,6 +101,52 @@ export default Route(SINGLETON_NAME,{
     const thirdHtml = thirdRaw ? this._renderThirdPlaceBlock(thirdRaw) : '';
 
     this._$content.width(++columns * COLUMN_WIDTH).html(treeHtml + thirdHtml);
+    const self = this;
+    requestAnimationFrame(() => self._positionThirdPlaceBelowTitle());
+  },
+
+  /**
+   * Place third-place strip just under the title-match column; flow layout would leave it after the
+   * tallest bracket column (often the bottom of the page).
+   */
+  _positionThirdPlaceBelowTitle() {
+    const $wrap = this._$content;
+    const $third = $wrap.children('.bracket-third-place-wrap');
+    if (!$third.length) {
+      return;
+    }
+
+    let $anchor = $wrap.children('ol.tier.left.winner').first();
+    if (!$anchor.length) {
+      $anchor = $wrap.children('ol.tier.left').last();
+    }
+    if (!$anchor.length) {
+      $third.css({ top: '', position: '', left: '', right: '' });
+      return;
+    }
+
+    // Use the vertical middle of the title cell, not the bottom of the ol. The winner column ol is
+    // as tall as bracketHeight (same as outer rounds), so its bottom is the page bottom — same as
+    // clearing after all floats. The actual title row sits at the center of that cell.
+    let $midTarget = $anchor.find('> li .winner').first();
+    if (!$midTarget.length) {
+      $midTarget = $anchor.find('> li.round:last .entrant').first();
+    }
+    if (!$midTarget.length) {
+      $midTarget = $anchor;
+    }
+
+    const wrapTop = $wrap.offset().top;
+    const targetTop = $midTarget.offset().top - wrapTop;
+    const midY = targetTop + $midTarget.outerHeight() / 2;
+    const topPx = midY + THIRD_PLACE_GAP_BELOW_TITLE_PX;
+
+    $third.css({
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      top: topPx
+    });
   },
 
   _thirdPlaceShownForResultsView(group) {
