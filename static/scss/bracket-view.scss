@@ -111,11 +111,13 @@ $WINNER_DL_HEIGHT: 200px;
 
   .bracket-display {
     margin: 0 auto;
+    position: relative;
   }
 
+  // Position top is set in JS so the strip sits under the title match, not after the tallest column.
   .bracket-third-place-wrap {
-    clear: both;
-    padding-top: 28px;
+    clear: none;
+    padding-top: 12px;
     text-align: center;
   }
 
