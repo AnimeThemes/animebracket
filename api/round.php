@@ -673,7 +673,7 @@ namespace Api {
                         break;
                     case 2:
                         $retVal = self::_isDualFinalsLayer($round->tier, $round->group, $roundsInTier)
-                            ? 'Finals'
+                            ? 'Title and Third Place Matches'
                             : 'Semi Finals';
                         break;
                     case 1:
@@ -725,7 +725,7 @@ namespace Api {
                 case 4:
                     return 'Quarter Finals';
                 case 2:
-                    return self::_isDualFinalsLayer($tier, $group, $roundsInTier) ? 'Finals' : 'Semi Finals';
+                    return self::_isDualFinalsLayer($tier, $group, $roundsInTier) ? 'Title and Third Place Matches' : 'Semi Finals';
                 case 1:
                     return 'Title Match';
             }
