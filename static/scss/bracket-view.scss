@@ -29,6 +29,8 @@ $ENTRANT_HEIGHT: 50px;
 $ENTRANT_WIDTH: 225px;
 $ENTRANT_SPACING: 25px;
 $ENTRANT_AFTER: 18px;
+$WINNER_IMG_SIZE: 150px;
+$WINNER_DL_HEIGHT: 200px;
 
 .results {
   position: relative;
@@ -107,13 +109,68 @@ $ENTRANT_AFTER: 18px;
     }
   }
 
-  #content {
-    overflow: hidden;
-    margin-top: 60px;
-  }
-
   .bracket-display {
     margin: 0 auto;
+    position: relative;
+  }
+
+  // Position top is set in JS so the strip sits under the title match, not after the tallest column.
+  .bracket-third-place-wrap {
+    clear: none;
+    padding-top: 12px;
+    text-align: center;
+  }
+
+  .bracket-third-place-heading {
+    font-size: 18px;
+    color: $dark;
+  }
+
+  .bracket-third-place-match {
+    $tp-center-col: 168px;
+    $tp-dl-height: $ENTRANT_HEIGHT + 48px;
+
+    width: 2 * ($ENTRANT_WIDTH + $ENTRANT_AFTER) + $tp-center-col;
+    margin-left: auto;
+    margin-right: auto;
+    text-align: left;
+
+    ol.tier.winner {
+      width: $tp-center-col;
+
+      .winner--third-place {
+        width: 100%;
+
+        dl {
+          width: 100%;
+          height: $tp-dl-height;
+          margin-top: $tp-dl-height / -2;
+        }
+
+        img {
+          width: $ENTRANT_HEIGHT;
+          height: $ENTRANT_HEIGHT;
+          // Center portrait in dl (matches side entrant row center).
+          margin-top: ($tp-dl-height - $ENTRANT_HEIGHT) / 2;
+        }
+
+        h2 {
+          font-size: 18px;
+          line-height: 1.2;
+          margin-top: 6px;
+        }
+      }
+    }
+
+    &::after {
+      content: '';
+      display: table;
+      clear: both;
+    }
+  }
+
+  .bracket-third-place-wrap--placeholder .bracket-third-place-heading {
+    opacity: 0.65;
   }
 
   .tier {
@@ -166,16 +223,16 @@ $ENTRANT_AFTER: 18px;
       }
 
       img {
-        width: 150px;
-        height: 150px;
+        width: $WINNER_IMG_SIZE;
+        height: $WINNER_IMG_SIZE;
       }
 
       dl {
         width: $ENTRANT_WIDTH + $ENTRANT_AFTER;
         position: absolute;
-        height: 200px;
+        height: $WINNER_DL_HEIGHT;
         top: 50%;
-        margin-top: -100px;
+        margin-top: $WINNER_DL_HEIGHT / -2;
         &:before {
           display: block;
           content: '';

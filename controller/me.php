@@ -84,7 +84,7 @@ namespace Controller {
                 // safely move to. Mostly this is for eliminations
                 foreach ($out->brackets as $bracket) {
                     $bracket->title = Api\Round::getBracketTitleForActiveRound($bracket);
-                    $bracket->nextIsFinal = $bracket->title === 'Title Match';
+                    $bracket->nextIsFinal = $bracket->title === 'Title Match' || $bracket->title === 'Title and Third Place Matches';
 
                     // Get the title of the next round
                     $nextRounds = Api\Round::getNextRounds($bracket);

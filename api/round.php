@@ -22,7 +22,8 @@ namespace Api {
             'character2Votes' => 'round_character2_votes',
             'final' => 'round_final',
             'dateEnded' => 'round_end_date',
-            'deleted' => 'round_deleted'
+            'deleted' => 'round_deleted',
+            'isThirdPlaceMatch' => 'round_is_third_place_match'
         );
 
         /**
@@ -126,6 +127,11 @@ namespace Api {
         public $deleted = 0;
 
         /**
+         * Flag for the third-place row (same tier as the title row, order 1).
+         */
+        public $isThirdPlaceMatch = 0;
+
+        /**
          * Constructor
          */
         public function __construct($round = null) {
@@ -133,6 +139,7 @@ namespace Api {
                 parent::copyFromDbRow($round);
                 $this->final = isset($round->round_final) && $round->round_final > 0 ? 1 : 0;
                 $this->deleted = isset($round->round_deleted) && $round->round_deleted > 0 ? 1 : 0;
+                $this->isThirdPlaceMatch = !empty($this->isThirdPlaceMatch) ? 1 : 0;
                 if (isset($round->user_vote)) {
                     $this->voted = $round->user_vote > 0;
                     $this->votedCharacterId = (int) $round->user_vote;
@@ -379,6 +386,25 @@ namespace Api {
         }
 
         /**
+         * Returns true when the given tier/group represents the dual-finals layer
+         * (title + third place).
+         */
+        private static function _isDualFinalsLayer($tier, $group, array $roundsInTier) {
+            if (!Bracket::THIRD_PLACE_MATCH_ENABLED || (int) $tier <= 1) {
+                return false;
+            }
+            foreach ($roundsInTier as $r) {
+                if ($group !== null && (int) $r->group !== (int) $group) {
+                    continue;
+                }
+                if (!empty($r->isThirdPlaceMatch)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /**
          * Gets the rounds to come after the active round
          */
         public static function getNextRounds(Bracket $bracket) {
@@ -404,6 +430,23 @@ namespace Api {
                 $retVal = $row->character_id;
             }
             return $retVal;
+        }
+
+        /**
+         * Returns the losing character id for a decided matchup.
+         * Returns null for byes or undecided rounds.
+         */
+        public function getLoserId() {
+            $winnerId = $this->getWinnerId();
+            if (!$winnerId) {
+                return null;
+            }
+            if ((int) $this->character2Id === 1) {
+                return null;
+            }
+            return (int) $winnerId === (int) $this->character1Id
+                ? (int) $this->character2Id
+                : (int) $this->character1Id;
         }
 
         /**
@@ -464,18 +507,38 @@ namespace Api {
                         return [];
                     }
 
-                    // Step 2: decide which tiers should be merged.
-                    $countsByTier = self::getRoundCountsByGroup($bracketId, null);
-                    $matchupsByTier = [];
+                    // Step 2: all non-deleted rounds for this bracket, bucketed by tier (merge rules + chart labels).
+                    $roundsByTier = [];
+                    $allRoundsResult = self::createQuery()
+                        ->where('bracketId', $bracketId)
+                        ->where('deleted', 0)
+                        ->orderBy('tier')
+                        ->orderBy('group')
+                        ->orderBy('order')
+                        ->execute();
+                    if ($allRoundsResult && $allRoundsResult->count > 0) {
+                        while ($row = Lib\Db::Fetch($allRoundsResult)) {
+                            $t = (int) $row->round_tier;
+                            if (!isset($roundsByTier[$t])) {
+                                $roundsByTier[$t] = [];
+                            }
+                            $roundsByTier[$t][] = new Round($row);
+                        }
+                    }
+
                     $mergedTiers = [];
                     foreach (array_keys($byTier) as $tier) {
-                        $counts = $countsByTier[$tier] ?? [];
-                        if (empty($counts)) {
+                        $rounds = $roundsByTier[$tier] ?? [];
+                        if (!$rounds) {
                             continue;
                         }
-                        $matchupsByTier[(int) $tier] = array_sum($counts);
-                        if (max($counts) <= self::COMBINE_GROUP_THRESHOLD
-                            || $matchupsByTier[(int) $tier] <= self::COMBINE_TIER_MAX_TOTAL_MATCHUPS) {
+                        $countsByGroup = [];
+                        foreach ($rounds as $r) {
+                            $g = (int) $r->group;
+                            $countsByGroup[$g] = ($countsByGroup[$g] ?? 0) + 1;
+                        }
+                        if (max($countsByGroup) <= self::COMBINE_GROUP_THRESHOLD
+                            || count($rounds) <= self::COMBINE_TIER_MAX_TOTAL_MATCHUPS) {
                             $mergedTiers[] = (int) $tier;
                         }
                     }
@@ -526,8 +589,11 @@ namespace Api {
                     // Step 5: add chart labels on the server.
                     foreach ($retVal as $chartRow) {
                         $tier = (int) $chartRow->tier;
-                        $matchupsInTier = $matchupsByTier[$tier] ?? 0;
-                        $chartRow->label = self::_votingStatsChartLabel($tier, $chartRow->group, $matchupsInTier);
+                        $chartRow->label = self::_votingStatsChartLabel(
+                            $tier,
+                            $chartRow->group,
+                            $roundsByTier[$tier] ?? []
+                        );
                     }
 
                     return $retVal;
@@ -596,8 +662,7 @@ namespace Api {
 
             $retVal = '';
 
-            // Get all other rounds (if none were provided) in this tier to determine special titles
-            $roundsInTier = self::getRoundsByTier($bracket->id, $round->tier);
+            $roundsInTier = self::getRoundsByTier($bracket->id, $round->tier) ?? [];
             $roundCount = count($roundsInTier);
             if ($round->tier == 0) {
                 $retVal = 'Eliminations - Group ' . chr($round->group + 65);
@@ -607,7 +672,9 @@ namespace Api {
                         $retVal = 'Quarter Finals';
                         break;
                     case 2:
-                        $retVal = 'Semi Finals';
+                        $retVal = self::_isDualFinalsLayer($round->tier, $round->group, $roundsInTier)
+                            ? 'Title and Third Place Matches'
+                            : 'Semi Finals';
                         break;
                     case 1:
                         $retVal = 'Title Match';
@@ -640,9 +707,13 @@ namespace Api {
 
         }
 
-        /** @param int|null $group null when getVotingStats emitted a combined tier row */
-        private static function _votingStatsChartLabel($tier, $group, $matchupsInTier) {
-            // $matchupsInTier = array_sum of matchup counts for this tier (all groups).
+        /**
+         * Builds the admin chart label for a tier/group row.
+         *
+         * @param int|null $group Null when getVotingStats emitted a merged tier row.
+         * @param Round[] $roundsInTier All non-deleted rounds at $tier.
+         */
+        private static function _votingStatsChartLabel($tier, $group, array $roundsInTier) {
             if ((int) $tier === 0) {
                 if ($group === null) {
                     return 'Eliminations';
@@ -650,11 +721,11 @@ namespace Api {
                 return 'Eliminations, Group ' . chr(65 + (int) $group);
             }
 
-            switch ($matchupsInTier) {
+            switch (count($roundsInTier)) {
                 case 4:
                     return 'Quarter Finals';
                 case 2:
-                    return 'Semi Finals';
+                    return self::_isDualFinalsLayer($tier, $group, $roundsInTier) ? 'Title and Third Place Matches' : 'Semi Finals';
                 case 1:
                     return 'Title Match';
             }
