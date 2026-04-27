@@ -13,7 +13,7 @@ BEGIN
 
   SELECT
     COUNT(DISTINCT v.user_id) AS total,
-    r.`round_group`,
+    MIN(r.`round_group`) AS round_group,
     c.*
   FROM
     `round` r
