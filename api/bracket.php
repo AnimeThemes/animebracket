@@ -836,7 +836,7 @@ namespace Api {
          */
         public function setVotingLocked(bool $locked) {
             $cache = Lib\Cache::getInstance();
-            return $cache->set($this->_votingLockedCacheKey(), $locked ? 1 : 0, CACHE_VERY_LONG);
+            return $cache->set($this->_votingLockedCacheKey(), $locked ? 1 : 0, CACHE_FOREVER);
         }
 
     }
