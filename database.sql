@@ -244,8 +244,8 @@ DROP PROCEDURE IF EXISTS `proc_GetEliminationGroupsCharacterVotes`$$
 CREATE DEFINER=`root`@`localhost` PROCEDURE `proc_GetEliminationGroupsCharacterVotes` (`bracketId` INT, `maxDate` INT)  BEGIN
 
   SELECT
-    COUNT(1) AS total,
-    r.`round_group`,
+    COUNT(DISTINCT v.user_id) AS total,
+    MIN(r.`round_group`) AS round_group,
     c.*
   FROM
     `round` r
@@ -267,7 +267,7 @@ DROP PROCEDURE IF EXISTS `proc_GetEliminationVotesForGroups`$$
 CREATE DEFINER=`root`@`localhost` PROCEDURE `proc_GetEliminationVotesForGroups` (`bracketId` INT, `maxDate` INT)  BEGIN
 
   SELECT
-    COUNT(1) AS total,
+    COUNT(DISTINCT v.user_id) AS total,
     r.`round_group`
   FROM
     `votes` v
