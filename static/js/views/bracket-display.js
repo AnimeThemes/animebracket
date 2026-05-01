@@ -16,6 +16,8 @@ const COLUMN_WIDTH = 225 + 18;
 const THIRD_PLACE_ROW_HEIGHT = 60;
 /** Pixels below the title-match cell vertical center to the top of the third-place strip. */
 const THIRD_PLACE_GAP_BELOW_TITLE_PX = 180;
+const MOBILE_WIDTH_PX = 480;
+const MOBILE_THIRD_PLACE_GAP_BELOW_TITLE_PX = 130;
 
 export default Route(SINGLETON_NAME,{
 
@@ -139,7 +141,7 @@ export default Route(SINGLETON_NAME,{
     const wrapTop = $wrap.offset().top;
     const targetTop = $midTarget.offset().top - wrapTop;
     const midY = targetTop + $midTarget.outerHeight() / 2;
-    const topPx = midY + THIRD_PLACE_GAP_BELOW_TITLE_PX;
+    const topPx = midY + this._thirdPlaceGapBelowTitlePx();
 
     $third.css({
       position: 'absolute',
@@ -147,6 +149,18 @@ export default Route(SINGLETON_NAME,{
       right: 0,
       top: topPx
     });
+  },
+
+  _thirdPlaceGapBelowTitlePx() {
+    if (window.matchMedia) {
+      return window.matchMedia(`(max-width: ${MOBILE_WIDTH_PX}px)`).matches
+        ? MOBILE_THIRD_PLACE_GAP_BELOW_TITLE_PX
+        : THIRD_PLACE_GAP_BELOW_TITLE_PX;
+    }
+
+    return window.innerWidth <= MOBILE_WIDTH_PX
+      ? MOBILE_THIRD_PLACE_GAP_BELOW_TITLE_PX
+      : THIRD_PLACE_GAP_BELOW_TITLE_PX;
   },
 
   _thirdPlaceShownForResultsView(group) {
