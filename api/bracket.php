@@ -646,7 +646,7 @@ namespace Api {
                     $groupCount = $group < count($groupCounts) ? $groupCounts[$group] : null;
                     if ($groupCount !== null) {
                         if ($groupCount !== 0) {
-                            $obj->adjustedVotes = round(($obj->totalVotes / $groupCount) * $max);
+                            $obj->adjustedVotes = ($obj->totalVotes / $groupCount) * $max;
                         } else {
                             $obj->adjustedVotes = 0;
                         }
