@@ -56,14 +56,14 @@ export default Route('characters', {
         });
         break;
       case 'source':
-        for (var source in sourceSort) {
-          if (!!sourceSort[source]) {
-            dataSets.push({
-              header: source,
-              characters: sourceSort[source]
-            });
-          }
-        }
+        Object.keys(sourceSort).sort((sourceA, sourceB) => {
+          return sourceA.localeCompare(sourceB);
+        }).forEach((source) => {
+          dataSets.push({
+            header: source,
+            characters: sourceSort[source]
+          });
+        });
         break;
       default:
         dataSets.push({
