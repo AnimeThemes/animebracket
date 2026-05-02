@@ -29,6 +29,7 @@ export default Route(SINGLETON_NAME,{
     this._$header = $('header');
     this._groups = 0;
     this._initialized = false;
+    this._positionThirdPlaceFrame = null;
   },
 
   parseQueryString(qs) {
@@ -103,8 +104,18 @@ export default Route(SINGLETON_NAME,{
     const thirdHtml = thirdRaw ? this._renderThirdPlaceBlock(thirdRaw) : '';
 
     this._$content.width(++columns * COLUMN_WIDTH).html(treeHtml + thirdHtml);
-    const self = this;
-    requestAnimationFrame(() => self._positionThirdPlaceBelowTitle());
+    this._schedulePositionThirdPlaceBelowTitle();
+  },
+
+  _schedulePositionThirdPlaceBelowTitle() {
+    if (this._positionThirdPlaceFrame) {
+      cancelAnimationFrame(this._positionThirdPlaceFrame);
+    }
+
+    this._positionThirdPlaceFrame = requestAnimationFrame(() => {
+      this._positionThirdPlaceFrame = null;
+      this._positionThirdPlaceBelowTitle();
+    });
   },
 
   /**
@@ -141,7 +152,12 @@ export default Route(SINGLETON_NAME,{
     const wrapTop = $wrap.offset().top;
     const targetTop = $midTarget.offset().top - wrapTop;
     const midY = targetTop + $midTarget.outerHeight() / 2;
-    const topPx = midY + this._thirdPlaceGapBelowTitlePx();
+    const desiredTop = midY + this._thirdPlaceGapBelowTitlePx();
+    const $winnerName = $midTarget.find('h2').first();
+    const minTopBelowWinnerName = $winnerName.length
+      ? ($winnerName.offset().top - wrapTop) + $winnerName.outerHeight(true)
+      : desiredTop;
+    const topPx = Math.max(desiredTop, minTopBelowWinnerName);
 
     $third.css({
       position: 'absolute',
@@ -331,6 +347,9 @@ export default Route(SINGLETON_NAME,{
       this._groups = groups + 1;
 
       this._$body.on('mouseover', '.entrant-info', this.handleMouseOver.bind(this));
+      $(window)
+        .off('resize.bracketDisplayThirdPlace')
+        .on('resize.bracketDisplayThirdPlace', this._schedulePositionThirdPlaceBelowTitle.bind(this));
       this._$header.find('.title').text(window.bracketData.name);
 
       group = isNaN(group) ? group : group - 1;
