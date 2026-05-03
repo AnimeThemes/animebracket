@@ -646,7 +646,7 @@ namespace Api {
                     $groupCount = $group < count($groupCounts) ? $groupCounts[$group] : null;
                     if ($groupCount !== null) {
                         if ($groupCount !== 0) {
-                            $obj->adjustedVotes = round(($obj->totalVotes / $groupCount) * $max);
+                            $obj->adjustedVotes = ($obj->totalVotes / $groupCount) * $max;
                         } else {
                             $obj->adjustedVotes = 0;
                         }
@@ -836,7 +836,7 @@ namespace Api {
          */
         public function setVotingLocked(bool $locked) {
             $cache = Lib\Cache::getInstance();
-            return $cache->set($this->_votingLockedCacheKey(), $locked ? 1 : 0, CACHE_VERY_LONG);
+            return $cache->set($this->_votingLockedCacheKey(), $locked ? 1 : 0, CACHE_FOREVER);
         }
 
     }

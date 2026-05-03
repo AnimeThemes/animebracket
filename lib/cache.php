@@ -9,6 +9,7 @@ namespace Lib {
 	define('CACHE_LONG', 3600);
 	define('CACHE_MEDIUM', 600);
 	define('CACHE_SHORT', 60);
+	define('CACHE_FOREVER', null);
 	define('CACHE_STATS_KEYS', 'CacheStats_keys');
 
 	if (!defined('DISABLE_CACHE')) {
@@ -56,7 +57,13 @@ namespace Lib {
 			if (null !== $this->_memcache && is_string($key)) {
 				// Hash the key to obfuscate and to avoid the cache-key size limit
 				$key = $this->_formatCacheKey($key);
-				$retVal = $this->_memcache->set($key, $val, time() + $expiration);
+				
+				// null means no expiration
+				if ($expiration === null) {
+					$retVal = $this->_memcache->set($key, $val, 0);
+				} else {
+					$retVal = $this->_memcache->set($key, $val, time() + $expiration);
+				}
 			}
 			return $retVal;
 		}

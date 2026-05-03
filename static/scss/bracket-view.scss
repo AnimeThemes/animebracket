@@ -222,6 +222,15 @@ $WINNER_DL_HEIGHT: 200px;
         color: get-color(white);
       }
 
+      &:not(.winner--third-place) h2 {
+        display: block;
+        margin-left: 50%;
+        max-width: 480px;
+        overflow-wrap: anywhere;
+        transform: translateX(-50%);
+        width: 480px;
+      }
+
       img {
         width: $WINNER_IMG_SIZE;
         height: $WINNER_IMG_SIZE;
@@ -545,6 +554,10 @@ $WINNER_DL_HEIGHT: 200px;
   @media screen and (max-width: $MOBILE-WIDTH) {
     top: 60px;
     margin-top: 20px;
+
+    .tier .winner:not(.winner--third-place) h2 {
+      max-width: calc(100vw - 32px);
+    }
 
     header {
       padding-bottom: 50px;

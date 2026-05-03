@@ -1,6 +1,9 @@
 static/css/dev/compile
 static/css/*.css*
-static/fonts/
+static/fonts/*
+!static/fonts/roboto-regular.ttf
+!static/fonts/roboto-light.ttf
+!static/fonts/roboto-bold.ttf
 vendor/
 node_modules/
 static/images/
