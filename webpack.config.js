@@ -63,7 +63,8 @@ module.exports = (env, argv) => {
       }),
       new CopyPlugin({
         patterns: [
-          { from: path.resolve(__dirname, 'static/images/'), to: 'static/images/' }
+          { from: path.resolve(__dirname, 'static/images/'), to: 'static/images/' },
+          { from: path.resolve(__dirname, 'static/fonts/'), to: 'static/fonts/' },
         ],
       }),
     ],
