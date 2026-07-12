@@ -27,9 +27,19 @@
     position: static;
   }
 
-  // Pull trailing mini-card margin-right into the content padding
+  // Pull trailing mini-card margin-right into the content padding (desktop rows only)
   .mini-card-container {
     margin-right: -20px;
+  }
+
+  @media screen and (max-width: $MOBILE-WIDTH) {
+    .mini-card-container {
+      margin-right: 0;
+    }
+
+    .mini-card {
+      margin-right: 0;
+    }
   }
 
   .sorter {
