@@ -276,7 +276,7 @@ export default Route(SINGLETON_NAME,{
 
     if (group === 'finals') {
       group = null;
-      tier = bracketData.results.length - 3;
+      tier = Math.max(0, bracketData.results.length - 4);
     } else if (group === 'full') {
       group = null;
       tier = 0;
