@@ -70,6 +70,14 @@
 
   }
 
+  @media screen and (max-width: $MOBILE-WIDTH) {
+    .sorter .label {
+      width: 100%;
+      margin-right: 0;
+      margin-bottom: spacing(2);
+    }
+  }
+
 }
 
 .mini-card-container {
