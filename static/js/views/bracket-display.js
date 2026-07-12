@@ -250,6 +250,45 @@ export default Route(SINGLETON_NAME,{
     return Math.log(rounds) / Math.LN2 + 1;
   },
 
+  /** Whether a 1-based tier is in the Finals view (last 4 tiers). */
+  _isFinalsTier(tier, resultsLength) {
+    return (tier - 1) >= resultsLength - 4;
+  },
+
+  /**
+   * URL group for bare results: last completed tier/group, or finals / Group A.
+   * Returns 1-based letter group, or 'finals'.
+   */
+  _defaultResultsGroupUrl(results) {
+    if (!results || !results.length) {
+      return 1;
+    }
+
+    // Highest tier first; within a tier, highest completed group wins.
+    for (let i = results.length - 1; i >= 0; i--) {
+      let highestCompletedGroup = null;
+      const tierRows = results[i];
+      for (let r = 0; r < tierRows.length; r++) {
+        const row = tierRows[r];
+        if (!row || row.filler || !row.final) {
+          continue;
+        }
+        if (highestCompletedGroup === null || row.group > highestCompletedGroup) {
+          highestCompletedGroup = row.group;
+        }
+      }
+      if (highestCompletedGroup === null) {
+        continue;
+      }
+      if (this._isFinalsTier(i + 1, results.length)) {
+        return 'finals';
+      }
+      return highestCompletedGroup + 1;
+    }
+
+    return 1;
+  },
+
   handleMouseOver(evt) {
     let id = evt.currentTarget.getAttribute('data-id');
     if ('1' !== id) {
@@ -307,11 +346,13 @@ export default Route(SINGLETON_NAME,{
   initRoute() {
 
     let qs = this.parseQueryString();
-    let group = qs.hasOwnProperty('group') ? qs.group : 1;
     let groups = 0;
 
     this._bracketData = window.bracketData || null;
 
+    let group = qs.hasOwnProperty('group')
+      ? qs.group
+      : this._defaultResultsGroupUrl(this._bracketData?.results);
 
     if (this._bracketData && !this._initialized) {
 
