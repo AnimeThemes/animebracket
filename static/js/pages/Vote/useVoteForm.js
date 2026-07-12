@@ -25,31 +25,25 @@ export const useVoteForm = ({ rounds, bracket }) => {
 
   const selectEntrant = ({ roundId, entrantId }) => {
     const { character1, character2, ...roundProps } = ballot[roundId];
-    const clickingSelected =
-      (character1.selected && character1.id === entrantId) ||
-      (character2.selected && character2.id === entrantId);
 
-    // Saved votes cannot be cleared — clicking the current pick is a no-op
-    if (roundProps.voted && clickingSelected) {
+
+    // if the user has already cast a vote in this round, nope
+    if (roundProps.voted) {
       return;
     }
 
-    // Saved: select clicked entrant. Unsaved: toggle (click again to clear).
-    const selectClicked = (character) => (
-      roundProps.voted
-        ? character.id === entrantId
-        : character.id === entrantId && !character.selected
-    );
-
     const updatedRound = {
       ...roundProps,
+      // update the selected state of each character such that:
+      // - it was the character marked as selected
+      // - that character wasn't _already_ selected. if they are, unselect
       character1: {
         ...character1,
-        selected: selectClicked(character1),
+        selected: character1.id === entrantId && !character1.selected,
       },
       character2: {
         ...character2,
-        selected: selectClicked(character2),
+        selected: character2.id === entrantId && !character2.selected,
       },
     };
 
@@ -64,20 +58,10 @@ export const useVoteForm = ({ rounds, bracket }) => {
 
     Object.keys(ballot).forEach(roundId => {
       const round = ballot[roundId];
-      const selectedId = round.character1.selected
-        ? round.character1.id
-        : (round.character2.selected ? round.character2.id : null);
-      if (selectedId == null) {
-        return;
-      }
-
-      const votedId = round.character1.voted
-        ? round.character1.id
-        : (round.character2.voted ? round.character2.id : null);
-
-      // New votes and changed votes; skip unchanged already-voted picks
-      if (votedId !== selectedId) {
-        formData.append(`round:${roundId}`, selectedId);
+      if (!round.character1.voted && round.character1.selected) {
+        formData.append(`round:${roundId}`, round.character1.id);
+      } else if (!round.character2.voted && round.character2.selected) {
+        formData.append(`round:${roundId}`, round.character2.id);
       }
     });
 
@@ -98,7 +82,7 @@ export const useVoteForm = ({ rounds, bracket }) => {
       setBallot(Object.keys(ballot).reduce((acc, roundId) => {
         const { character1, character2, ...roundProps } = ballot[roundId];
         acc[roundId] = {
-          ...roundProps,
+          roundProps,
           voted: character1.selected || character2.selected,
           character1: {
             ...character1,
@@ -107,7 +91,7 @@ export const useVoteForm = ({ rounds, bracket }) => {
           character2: {
             ...character2,
             voted: character2.selected,
-          },
+          }
         };
         return acc;
       }, {}));
