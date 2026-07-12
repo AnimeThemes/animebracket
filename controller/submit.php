@@ -172,14 +172,6 @@ namespace Controller {
                         if (Lib\Db::Query($query, $params)) {
                             $out->success = true;
 
-                            // I am vehemently against putting markup in the controller, but there's much refactor needed to make this right
-                            // So, that's a note that it will be changed in the future
-                            $out->message = 'Your votes were successfully submitted! <a href="/results/' . $bracket->perma . '">View Results</a>';
-                            // Oops, I did it again...
-                            if ($bracket->externalId) {
-                                $out->message .=  ' or <a href="http://redd.it/' . $bracket->externalId . '" target="_blank">discuss on reddit</a>.';
-                            }
-
                             // Clear any user related caches
                             $round = Api\Round::getById($votes[0]->roundId);
                             $cache = Lib\Cache::getInstance();
@@ -187,6 +179,21 @@ namespace Controller {
                             $cache->set('GetBracketRounds_' . $bracketId . '_' . $round->tier . '_all_' . $user->id, false);
                             $cache->set('CurrentRound_' . $bracketId . '_' . $user->id, false);
                             $bracket->getVotesForUser($user, true);
+
+                            // Link to the group that was just voted (Finals = last 4 tiers, same as results UI)
+                            $results = $bracket->getResults();
+                            $tierCount = is_array($results) ? count($results) : 0;
+                            $resultsGroup = ($tierCount > 0 && ((int) $round->tier - 1) >= $tierCount - 4)
+                                ? 'finals'
+                                : ((int) $round->group + 1);
+
+                            // I am vehemently against putting markup in the controller, but there's much refactor needed to make this right
+                            // So, that's a note that it will be changed in the future
+                            $out->message = 'Your votes were successfully submitted! <a href="/' . $bracket->perma . '/results?group=' . $resultsGroup . '">View Results</a>';
+                            // Oops, I did it again...
+                            if ($bracket->externalId) {
+                                $out->message .=  ' or <a href="http://redd.it/' . $bracket->externalId . '" target="_blank">discuss on reddit</a>.';
+                            }
                         } else {
                             $out->message = 'There was an unexpected error. Please try again in a few moments.';
                         }
