@@ -149,83 +149,58 @@ namespace Controller {
                 $count = count($votes);
                 if ($count > 0) {
 
-                    $validRounds = Api\Votes::getValidRoundEntrants($votes, $bracketId);
-                    $writeVotes = [];
+                    $query = 'INSERT INTO `votes` (`user_id`, `vote_date`, `round_id`, `character_id`, `bracket_id`) VALUES ';
+                    $params = [ ':userId' => $user->id, ':date' => time(), ':bracketId' => $bracketId ];
+
+                    $insertCount = 0;
+
+                    // Only run an insert for rounds that haven't been voted on
+                    $rounds = Api\Votes::getOpenRounds($user, $votes);
 
                     for ($i = 0; $i < $count; $i++) {
-                        $roundId = $votes[$i]->roundId;
-                        $characterId = $votes[$i]->characterId;
-
-                        if (!isset($validRounds[$roundId])) {
-                            continue;
+                        if (!isset($rounds[$votes[$i]->roundId])) {
+                            $query .= '(:userId, :date, :round' . $i . ', :character' . $i . ', :bracketId),';
+                            $params[':round' . $i] = $votes[$i]->roundId;
+                            $params[':character' . $i] = $votes[$i]->characterId;
+                            $insertCount++;
+                            $rounds[$votes[$i]->roundId] = true;
                         }
-
-                        $roundInfo = $validRounds[$roundId];
-                        if ($roundInfo->final) {
-                            continue;
-                        }
-
-                        if ($characterId !== $roundInfo->character1Id && $characterId !== $roundInfo->character2Id) {
-                            continue;
-                        }
-
-                        $writeVotes[] = $votes[$i];
                     }
 
-                    if (count($writeVotes) === 0) {
-                        $out->message = 'Voting for this round has closed';
-                        $out->code = 'closed';
-                    } else {
-                        $query = 'INSERT INTO `votes` (`user_id`, `vote_date`, `round_id`, `character_id`, `bracket_id`) VALUES ';
-                        $params = [];
-                        $voteDate = time();
-                        for ($i = 0, $writeCount = count($writeVotes); $i < $writeCount; $i++) {
-                            $query .= '(:user' . $i . ', :date' . $i . ', :round' . $i . ', :character' . $i . ', :bracket' . $i . '),';
-                            $params[':user' . $i] = $user->id;
-                            $params[':date' . $i] = $voteDate;
-                            $params[':round' . $i] = $writeVotes[$i]->roundId;
-                            $params[':character' . $i] = $writeVotes[$i]->characterId;
-                            $params[':bracket' . $i] = $bracketId;
-                        }
+                    if ($insertCount > 0) {
                         $query = substr($query, 0, strlen($query) - 1);
-                        $query .= ' ON DUPLICATE KEY UPDATE'
-                            . ' `character_id` = VALUES(`character_id`),'
-                            . ' `vote_date` = VALUES(`vote_date`)';
-
-                        if (!Lib\Db::Query($query, $params)) {
-                            $out->message = 'There was an unexpected error. Please try again in a few moments.';
-                        } else {
+                        if (Lib\Db::Query($query, $params)) {
                             $out->success = true;
 
-                            // Clear any user related caches using a validated open round from this ballot
-                            $round = Api\Round::getById($writeVotes[0]->roundId);
+                            // Clear any user related caches
+                            $round = Api\Round::getById($votes[0]->roundId);
                             $cache = Lib\Cache::getInstance();
                             $cache->set('GetBracketRounds_' . $bracketId . '_' . $round->tier . '_' . $round->group . '_' . $user->id, false);
                             $cache->set('GetBracketRounds_' . $bracketId . '_' . $round->tier . '_all_' . $user->id, false);
                             $cache->set('CurrentRound_' . $bracketId . '_' . $user->id, false);
                             $bracket->getVotesForUser($user, true);
 
-                            $out->message = 'Your votes were successfully submitted!';
+                            // Link to the group that was just voted (Finals = last 4 tiers, same as results UI)
+                            $results = $bracket->getResults();
+                            $tierCount = is_array($results) ? count($results) : 0;
+                            $resultsGroup = ($tierCount > 0 && ((int) $round->tier - 1) >= $tierCount - 4)
+                                ? 'finals'
+                                : ((int) $round->group + 1);
 
-                            // View Results only during bracket voting — elim tallies are not public
-                            if ($bracket->state === BS_VOTING) {
-                                $results = $bracket->getResults();
-                                $tierCount = is_array($results) ? count($results) : 0;
-                                $resultsGroup = ($tierCount > 0 && ((int) $round->tier - 1) >= $tierCount - 4)
-                                    ? 'finals'
-                                    : ((int) $round->group + 1);
-
-                                // I am vehemently against putting markup in the controller, but there's much refactor needed to make this right
-                                // So, that's a note that it will be changed in the future
-                                $out->message .= ' <a href="/' . $bracket->perma . '/results?group=' . $resultsGroup . '">View Results</a>';
-                            }
-
+                            // I am vehemently against putting markup in the controller, but there's much refactor needed to make this right
+                            // So, that's a note that it will be changed in the future
+                            $out->message = 'Your votes were successfully submitted! <a href="/' . $bracket->perma . '/results?group=' . $resultsGroup . '">View Results</a>';
                             // Oops, I did it again...
                             if ($bracket->externalId) {
-                                $prefix = $bracket->state === BS_VOTING ? ' or ' : ' ';
-                                $out->message .= $prefix . '<a href="http://redd.it/' . $bracket->externalId . '" target="_blank">discuss on reddit</a>.';
+                                $out->message .=  ' or <a href="http://redd.it/' . $bracket->externalId . '" target="_blank">discuss on reddit</a>.';
                             }
+                        } else {
+                            $out->message = 'There was an unexpected error. Please try again in a few moments.';
                         }
+
+                    } else {
+                        $out->message = 'Voting for this round has closed';
+                        $out->code = 'closed';
                     }
 
                 } else {
