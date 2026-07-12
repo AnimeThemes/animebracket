@@ -15,8 +15,13 @@
     box-sizing: border-box;
   }
 
+  // Height vars are kept in sync by nav.js (wrap / collapse / contest-tab wrap)
   .bracket-nav {
-    top: 82px;
+    top: var(--site-header-height, 82px);
+  }
+
+  #nav-header {
+    z-index: $BASE-INDEX + 10;
   }
 
   footer {
@@ -34,7 +39,8 @@ $WINNER_DL_HEIGHT: 200px;
 
 .results {
   position: relative;
-  margin-top: 160px;
+  // Extra spacing(4) matches the old 160px slack above the contest title
+  margin-top: calc(var(--site-header-height, 82px) + var(--bracket-nav-height, 78px) + #{spacing(4)});
   z-index: $BASE-INDEX + 1;
 
   header {
@@ -552,9 +558,6 @@ $WINNER_DL_HEIGHT: 200px;
   //
 
   @media screen and (max-width: $MOBILE-WIDTH) {
-    top: 60px;
-    margin-top: 20px;
-
     .tier .winner:not(.winner--third-place) h2 {
       max-width: calc(100vw - 32px);
     }
