@@ -6,7 +6,8 @@ $NAV_BG: #1b1e24;
   background: $NAV_BG;
   padding: 23px 30px;
   position: relative; // Just for the z-indexing needs
-  z-index: $BASE-INDEX + 5;
+  // Above .bracket-nav so the collapsed site menu overlays the contest bar
+  z-index: $BASE-INDEX + 7;
   overflow: hidden;
   display: flex;
   flex-wrap: wrap;
@@ -80,15 +81,18 @@ $NAV_BG: #1b1e24;
     }
 
     nav {
+      // No position:relative — open menu is anchored to #nav-header (full bleed)
       flex: 0 0 45px;
-      position: relative;
       align-self: stretch;
 
       &:before {
         content: '';
         display: block;
         position: absolute;
-        inset: 0;
+        width: 45px;
+        right: 0;
+        top: 0;
+        bottom: 0;
       }
 
       &:after {
@@ -96,9 +100,9 @@ $NAV_BG: #1b1e24;
         border: 7px solid transparent;
         border-top-color: #fff;
         position: absolute;
-        left: 50%;
+        right: 15px;
         top: 50%;
-        margin: -3px 0 0 -7px;
+        margin-top: -3px;
       }
 
       &.show {
@@ -115,6 +119,7 @@ $NAV_BG: #1b1e24;
 
     }
 
+    // Positioned against #nav-header so the panel spans the full header width
     ul {
       display: none;
       position: absolute;
@@ -155,7 +160,7 @@ $NAV_BG: #1b1e24;
   background: rgba($NAV_BG, .75);
   display: flex;
   justify-content: space-around;
-  z-index: 6;
+  z-index: $BASE-INDEX + 5;
   position: relative;
 
   &__toggle {
