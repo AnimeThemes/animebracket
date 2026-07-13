@@ -8,20 +8,27 @@ $NAV_BG: #1b1e24;
   position: relative; // Just for the z-indexing needs
   z-index: $BASE-INDEX + 5;
   overflow: hidden;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  // space-between: logo left + tabs right on one line;
+  // when tabs wrap alone onto a second line, a single item packs left
 
   h1 {
     @include image-text($background: url(/static/images/nav_logo.png), $width: 352px, $height: 36px);
-    float: left;
   }
 
   ul {
-    float: right;
+    display: flex;
+    flex-wrap: wrap;
+
     li {
       a {
         color: #fff;
         text-decoration: none;
       }
-      display: inline-block;
+      display: block;
       padding: 4px 15px 0;
       @include font-light();
       color: #fff;
@@ -34,35 +41,54 @@ $NAV_BG: #1b1e24;
     }
   }
 
+  @media screen and (max-width: 1170px) {
+    ul li {
+      padding-left: 12px;
+      padding-right: 12px;
+
+      &.user-divider:before {
+        left: -12px;
+      }
+    }
+  }
+
   //
-  // MOBILE STYLES
+  // COLLAPSED HEADER (tablet + phone)
   //
 
-  @media screen and (max-width: $MOBILE-WIDTH) {
+  @media screen and (max-width: $NAV-COLLAPSE-WIDTH) {
 
-    padding: 20px 60px 10px 20px;
+    // Logo + caret share one row; logo shrinks only if that row would overflow
+    flex-wrap: nowrap;
+    overflow: visible;
+    padding: 20px 10px 10px 20px;
 
-    a {
+    > a {
+      flex: 1 1 auto;
+      min-width: 0;
+      max-width: 352px;
       display: block;
     }
 
     h1 {
+      width: 100%;
       max-width: 100%;
+      // Keep aspect ratio while width tracks the available space (capped at 352px)
+      padding-top: percentage(36 / 352);
       background-size: contain;
-      margin-right: 75px;
-      float: none;
+      background-position: left center;
     }
 
     nav {
+      flex: 0 0 45px;
+      position: relative;
+      align-self: stretch;
 
       &:before {
         content: '';
         display: block;
         position: absolute;
-        width: 45px;
-        right: 0;
-        top: 0;
-        bottom: 0;
+        inset: 0;
       }
 
       &:after {
@@ -70,8 +96,9 @@ $NAV_BG: #1b1e24;
         border: 7px solid transparent;
         border-top-color: #fff;
         position: absolute;
-        right: 15px;
-        top: 30px;
+        left: 50%;
+        top: 50%;
+        margin: -3px 0 0 -7px;
       }
 
       &.show {
@@ -82,7 +109,6 @@ $NAV_BG: #1b1e24;
 
         ul {
           display: block;
-          z-index: $BASE-INDEX + 20;
         }
 
       }
@@ -90,14 +116,25 @@ $NAV_BG: #1b1e24;
     }
 
     ul {
-      float: none;
       display: none;
-      position: relative;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      z-index: $BASE-INDEX + 20;
+      background: $NAV_BG;
+      padding: 0 20px 10px;
+      box-sizing: border-box;
+      flex-wrap: nowrap;
 
       li {
         display: block;
         font-size: 18px;
         padding: 10px 0;
+
+        a {
+          display: block;
+        }
 
         &.user-divider {
           border-top: 1px solid #fff;
@@ -119,6 +156,11 @@ $NAV_BG: #1b1e24;
   display: flex;
   justify-content: space-around;
   z-index: 6;
+  position: relative;
+
+  &__toggle {
+    display: none;
+  }
 
   &__list {
     display: flex;
@@ -134,10 +176,69 @@ $NAV_BG: #1b1e24;
     text-decoration: none;
   }
 
-  // Since none of the extra pages are mobile optimized, hide the
-  // secondary nav for mobile users until I probably rewrite the
-  // entire damn site...
   @media screen and (max-width: $MOBILE-WIDTH) {
-    display: none;
+    display: block;
+    padding: spacing(2) spacing(4);
+    box-sizing: border-box;
+
+    &__toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: spacing(2);
+      margin: 0;
+      padding: spacing(2) 0;
+      border: 0;
+      background: transparent;
+      color: #fff;
+      font: 16px/1 Roboto, sans-serif;
+      text-align: left;
+      cursor: pointer;
+
+      &:after {
+        content: '';
+        border: 6px solid transparent;
+        border-top-color: #fff;
+        margin-top: 4px;
+      }
+    }
+
+    &__list {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      flex-direction: column;
+      background: $NAV_BG;
+      z-index: $BASE-INDEX + 20;
+      padding: 0 spacing(4) spacing(2);
+      box-sizing: border-box;
+    }
+
+    &.show {
+      .bracket-nav__toggle:after {
+        border-top-color: transparent;
+        border-bottom-color: #fff;
+        margin-top: -4px;
+      }
+
+      .bracket-nav__list {
+        display: flex;
+      }
+    }
+
+    &__item {
+      padding: spacing(2) 0;
+    }
+
+    &__link {
+      display: block;
+      font-size: 16px;
+      padding: spacing(1) 0;
+
+      &.is-active {
+        text-decoration: underline;
+      }
+    }
   }
 }

@@ -95,7 +95,7 @@
       z-index: 9001;
       box-shadow: 0 2px 3px rgba(0, 0, 0, .75);
 
-      @media screen and (max-width: 1170px) {
+      @media screen and (max-width: $MOBILE-WIDTH) {
         right: calc(50% - #{spacing(5)});
         font-size: 24px;
         padding-top: 2px;
@@ -152,8 +152,15 @@
 
 
   //
-  // MOBILE STYLES
+  // TABLET / MOBILE STYLES
   //
+
+  @media screen and (max-width: 800px) {
+    #content {
+      padding-left: spacing(4);
+      padding-right: spacing(4);
+    }
+  }
 
   @media screen and (max-width: $MOBILE-WIDTH) {
 

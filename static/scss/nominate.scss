@@ -110,8 +110,15 @@
   }
 
   //
-  // MOBILE STYLES
+  // TABLET / MOBILE STYLES
   //
+
+  @media screen and (max-width: 800px) {
+    #content {
+      padding-left: spacing(4);
+      padding-right: spacing(4);
+    }
+  }
 
   @media screen and (max-width: $MOBILE-WIDTH) {
     #content {

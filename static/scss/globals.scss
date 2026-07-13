@@ -10,7 +10,8 @@ $standard: #96bcb1;
 $light: #c4e6dd;
 
 $BASE-INDEX: 1;
-$MOBILE-WIDTH: 414px;
+$MOBILE-WIDTH: 576px;
+$NAV-COLLAPSE-WIDTH: 800px;
 
 @mixin font-light($size: 24px) {
   font: 300 $size/1 'Roboto', sans-serif;

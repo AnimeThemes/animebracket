@@ -4,7 +4,10 @@
 
   #content {
     @include page;
-    padding: 0;
+    // 3×380 cards + 2×20 gaps + 2×20 padding (border-box)
+    max-width: 1220px;
+    width: auto;
+    padding: 0 spacing(4);
     header {
       @include header;
     }
@@ -22,6 +25,17 @@
 
   footer {
     position: static;
+  }
+
+  .mini-card-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+
+  .mini-card {
+    float: none;
+    margin: 0;
   }
 
   .sorter {
@@ -54,6 +68,14 @@
       border: 1px solid #fff;
     }
 
+  }
+
+  @media screen and (max-width: $MOBILE-WIDTH) {
+    .sorter .label {
+      width: 100%;
+      margin-right: 0;
+      margin-bottom: spacing(2);
+    }
   }
 
 }
@@ -122,7 +144,8 @@
     bottom: 0;
     width: 22px;
     text-align: center;
-    right: 280px;
+    // Same as old right: 280px on a 380px card: pin seed's right edge to the 100px image
+    right: calc(100% - 100px);
     padding: 2px;
     font: 12px/1 'Roboto', sans-serif;
     background: $dark;
