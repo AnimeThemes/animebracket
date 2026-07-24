@@ -19,20 +19,29 @@ namespace Controller\Admin {
                     header('Content-Type: text/csv');
                     header('Content-Disposition: attachment; filename=' . $bracket->perma . '.csv');
 
-                    // I generally don't like doing queries in a controller, but it's going
-                    // to be much lighter weight to dump the data from the query directly
-                    // out to the stream.
-                    $query  = 'SELECT v.vote_date, c.character_name, r.round_tier, r.round_group ';
+                    // Two queries on purpose: indexes need all distinct user_ids first, but
+                    // buffering ~hundreds of thousands of vote rows in PHP is too heavy.
+                    // Build a small index map, then stream votes ordered by date.
+                    $userIndexes = self::_getUserIndexesForBracket($bracket->id);
+
+                    $query  = 'SELECT v.vote_date, v.user_id, c.character_name, r.round_tier, r.round_group ';
                     $query .= 'FROM `votes` v INNER JOIN `round` r ON r.round_id = v.round_id ';
                     $query .= 'INNER JOIN `character` c ON c.character_id = v.character_id ';
-                    $query .= 'WHERE v.bracket_id = :bracketId';
-                    
+                    $query .= 'WHERE v.bracket_id = :bracketId ';
+                    $query .= 'ORDER BY v.vote_date ASC';
+
                     $result = Lib\Db::Query($query, [ ':bracketId' => $bracket->id ]);
 
                     if ($result && $result->count) {
-                        fputcsv($handle, [ 'Date', 'Entrant', 'Round', 'Group' ]);
+                        fputcsv($handle, [ 'Date', 'User Index', 'Entrant', 'Round', 'Group' ]);
                         while ($row = Lib\Db::Fetch($result)) {
-                            fputcsv($handle, [ date('c', $row->vote_date), $row->character_name, $row->round_tier, $row->round_group ]);
+                            fputcsv($handle, [
+                                date('c', $row->vote_date),
+                                $userIndexes[(int) $row->user_id],
+                                $row->character_name,
+                                $row->round_tier,
+                                $row->round_group
+                            ]);
                         }
                     }
 
@@ -45,6 +54,23 @@ namespace Controller\Admin {
 
             exit;
 
+        }
+
+        // 0-based index by ascending user_id among voters in this bracket (order only, no raw ids).
+        private static function _getUserIndexesForBracket($bracketId) {
+            $indexes = [];
+            $result = Lib\Db::Query(
+                'SELECT DISTINCT user_id FROM `votes` WHERE bracket_id = :bracketId ORDER BY user_id ASC',
+                [ ':bracketId' => $bracketId ]
+            );
+
+            if ($result && $result->count) {
+                for ($index = 0; $row = Lib\Db::Fetch($result); $index++) {
+                    $indexes[(int) $row->user_id] = $index;
+                }
+            }
+
+            return $indexes;
         }
 
     }
