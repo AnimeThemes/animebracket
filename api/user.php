@@ -81,7 +81,7 @@ namespace Api {
 
       if ($client->getToken($code)) {
         $data = $client->call('api/v1/me');
-        if ($data && isset($data->name)) {
+        if ($data && isset($data->name) && (!isset($data->is_suspended) || $data->is_suspended === false)) {
           $user = self::getByName($data->name);
           if (!$user) {
             $user = new User;
