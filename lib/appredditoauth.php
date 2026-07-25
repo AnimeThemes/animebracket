@@ -5,7 +5,6 @@ namespace Lib {
   class AppRedditOAuth extends RedditOAuth {
 
     const APP_TOKEN_CACHE_KEY = 'reddit_app_access_token';
-    const APP_TOKEN_CACHE_MINIMUM_TTL = 30;
     const TOKEN_EXPIRY_BUFFER_SECONDS = 60;
 
     public function __construct($clientId, $clientSecret, $userAgent) {
@@ -28,7 +27,6 @@ namespace Lib {
         $cached &&
         is_object($cached) &&
         !empty($cached->token) &&
-        !empty($cached->expiration) &&
         $this->_isTokenUsable($cached->expiration)
       ) {
         $this->token = $cached->token;
@@ -42,17 +40,15 @@ namespace Lib {
       ], false);
 
       $this->_updateToken($response);
-      if (!$this->token) {
+      if (!$this->token || !$this->expiration) {
+        $this->token = null;
+        $this->expiration = null;
         return false;
       }
 
-      if ($this->expiration) {
-        // cache the token
-        $ttl = (int) $this->expiration - time() - self::TOKEN_EXPIRY_BUFFER_SECONDS;
-        if ($ttl < self::APP_TOKEN_CACHE_MINIMUM_TTL) {
-          $ttl = self::APP_TOKEN_CACHE_MINIMUM_TTL;
-        }
-
+      // cache the token when enough time remains
+      $ttl = (int) $this->expiration - time() - self::TOKEN_EXPIRY_BUFFER_SECONDS;
+      if ($ttl > 0) {
         $cache->set(self::APP_TOKEN_CACHE_KEY, (object) [
           'token' => $this->token,
           'expiration' => $this->expiration
