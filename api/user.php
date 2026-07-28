@@ -24,6 +24,7 @@ namespace Api {
     public $csrfToken;
 
     const USER_CSRF_ENTROPY = 8;
+    const LOGIN_REJECT_CACHE_PREFIX = 'reddit_login_reject_';
 
     /**
      * Reddit registration date of the account.
@@ -80,8 +81,34 @@ namespace Api {
       $client = self::_createOAuth2();
 
       if ($client->getToken($code)) {
+        // get account data
         $data = $client->call('api/v1/me');
-        if ($data && isset($data->name) && (!isset($data->is_suspended) || $data->is_suspended === false)) {
+        if ($data && isset($data->name)) {
+          // check if already in reject cache
+          if (self::_hasLoginRejectCache($data->name)) {
+            return false;
+          }
+
+          // check if suspended
+          if (!empty($data->is_suspended)) {
+            self::_setLoginRejectCache($data->name, CACHE_LONG);
+            return false;
+          }
+
+          // check about data
+          $appClient = self::_createAppOAuth2();
+          $aboutData = $appClient->getUserAboutData($data->name);
+          $status = $aboutData ? (int) $aboutData->status : 0;
+          if ($status !== 200) {
+            if ($status === 404) {
+              self::_setLoginRejectCache($data->name, CACHE_LONG);
+            } else if ($status === 429) {
+              self::_setLoginRejectCache($data->name, CACHE_SHORT);
+            }
+            return false;
+          }
+
+          // get user from database
           $user = self::getByName($data->name);
           if (!$user) {
             $user = new User;
@@ -94,30 +121,43 @@ namespace Api {
             }
           } else {
 
-            // This is to update any records that were created before age was tracked
-            if (!$user->age) {
+            // Backfill legacy missing age, but make sure not to overwrite local ban
+            if ($user->age === null) {
               $user->age = (int) $data->created;
               $user->sync();
             }
           }
 
-          // Save the login attempt before verifying attempt count
-          self::_logLoginAttempt($user->id);
+          if ($user) {
+            // Save the login attempt before verifying attempt count
+            self::_logLoginAttempt($user->id);
 
-          // Now verify that the user isn't banned and hasn't tried logging in too much
-          if (
-            $user &&
-            $user->age > 0 &&
-            self::_verifyLoginAttempts($user->id)
-          ) {
-            $user->csrfToken = bin2hex(openssl_random_pseudo_bytes(self::USER_CSRF_ENTROPY));
-            Lib\Session::set('user', $user);
-            $retVal = true;
+            // Now verify that the user isn't banned and hasn't tried logging in too much
+            if (
+              $user->age > 0 &&
+              self::_verifyLoginAttempts($user->id)
+            ) {
+              $user->csrfToken = bin2hex(openssl_random_pseudo_bytes(self::USER_CSRF_ENTROPY));
+              Lib\Session::set('user', $user);
+              $retVal = true;
+            }
           }
         }
       }
 
       return $retVal;
+    }
+
+    private static function _loginRejectCacheKey($userName) {
+      return self::LOGIN_REJECT_CACHE_PREFIX . strtolower($userName);
+    }
+
+    private static function _hasLoginRejectCache($userName) {
+      return !!Lib\Cache::getInstance()->get(self::_loginRejectCacheKey($userName), true);
+    }
+
+    private static function _setLoginRejectCache($userName, $ttl) {
+      Lib\Cache::getInstance()->set(self::_loginRejectCacheKey($userName), true, $ttl);
     }
 
     private static function _createOAuth2(User $user = null) {
@@ -131,6 +171,10 @@ namespace Api {
       }
 
       return $retVal;
+    }
+
+    private static function _createAppOAuth2() {
+      return new Lib\AppRedditOAuth(REDDIT_TOKEN, REDDIT_SECRET, HTTP_UA);
     }
 
     /**

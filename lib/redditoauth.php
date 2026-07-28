@@ -7,13 +7,14 @@ namespace Lib {
     const REDDIT_API_URL = 'https://www.reddit.com/api/v1';
     const REDDIT_OAUTH_URL = 'https://oauth.reddit.com';
 
-    private $clientId = null;
-    private $clientSecret = null;
-    private $clientUserAgent = null;
-    private $handlerUrl = null;
-    private $token = null;
-    private $refreshToken = null;
-    private $expiration = null;
+    protected $clientId = null;
+    protected $clientSecret = null;
+    protected $clientUserAgent = null;
+    protected $handlerUrl = null;
+
+    protected $token = null;
+    protected $refreshToken = null;
+    protected $expiration = null;
 
     public function __construct($clientId, $clientSecret, $userAgent, $handlerUrl) {
       $this->clientId = $clientId;
@@ -97,7 +98,7 @@ namespace Lib {
       return $retVal;
     }
 
-    private function _updateToken($response) {
+    protected function _updateToken($response) {
       if ($response && isset($response->access_token)) {
         $this->token = $response->access_token;
         if (isset($response->refresh_token)) {
@@ -105,9 +106,8 @@ namespace Lib {
         }
 
         if (isset($response->expires_in)) {
-          $this->expiration = time() + $response->expires_in;
+          $this->expiration = time() + (int) $response->expires_in;
         }
-        $retVal = $this->token;
       } else {
         $this->token = null;
       }
@@ -117,7 +117,7 @@ namespace Lib {
      * Verifies that the current token is still fresh. If not,
      * refreshs if possible
      */
-    private function _verifyTokenFresh() {
+    protected function _verifyTokenFresh() {
       $retVal = time() < $this->expiration;
 
       if (!$retVal && $this->refreshToken) {
@@ -133,7 +133,7 @@ namespace Lib {
       return $retVal;
     }
 
-    private function _createCurl($endpoint, $isOauth = true) {
+    protected function _createCurl($endpoint, $isOauth = true) {
       $apiUrl = $isOauth ? self::REDDIT_OAUTH_URL : self::REDDIT_API_URL;
 
       $retVal = curl_init($apiUrl . '/' . $endpoint);
@@ -161,7 +161,7 @@ namespace Lib {
     /**
      * Makes an OAuthenticated POST request
      */
-    private function _post($endpoint, array $params, $isOauth = true) {
+    protected function _post($endpoint, array $params, $isOauth = true) {
       $c = $this->_createCurl($endpoint, $isOauth);
       curl_setopt($c, CURLOPT_POST, true);
       curl_setopt($c, CURLOPT_POSTFIELDS, $params);
