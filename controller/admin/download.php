@@ -30,20 +30,16 @@ namespace Controller\Admin {
                     $query .= 'WHERE v.bracket_id = :bracketId ';
                     $query .= 'ORDER BY v.vote_date ASC';
 
-                    $result = Lib\Db::Query($query, [ ':bracketId' => $bracket->id ]);
-
-                    if ($result && $result->count) {
-                        fputcsv($handle, [ 'Date', 'User Index', 'Entrant', 'Round', 'Group' ]);
-                        while ($row = Lib\Db::Fetch($result)) {
-                            fputcsv($handle, [
-                                date('c', $row->vote_date),
-                                $userIndexes[(int) $row->user_id],
-                                $row->character_name,
-                                $row->round_tier,
-                                $row->round_group
-                            ]);
-                        }
-                    }
+                    fputcsv($handle, [ 'Date', 'Post-ID-sort User Index', 'Entrant', 'Round', 'Group' ]);
+                    Lib\Db::StreamQuery($query, [ ':bracketId' => $bracket->id ], function ($row) use ($handle, $userIndexes) {
+                        fputcsv($handle, [
+                            date('c', $row->vote_date),
+                            $userIndexes[(int) $row->user_id],
+                            $row->character_name,
+                            $row->round_tier,
+                            $row->round_group
+                        ]);
+                    });
 
                     fclose($handle);
 

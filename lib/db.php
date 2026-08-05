@@ -91,6 +91,45 @@ namespace Lib {
 			return $retVal;
 		}
 
+		/**
+		 * Runs a SELECT in MySQL unbuffered mode and invokes $callback for each
+		 * row so the full result is never buffered in PHP. Restores buffered
+		 * mode when finished (including on error). Do not run other queries on
+		 * this connection from inside $callback. SELECT only.
+		 *
+		 * @return bool true if the query ran, false on failure
+		 */
+		public static function StreamQuery($sql, $params, callable $callback)
+		{
+			if (strtolower(current(explode(' ', ltrim($sql)))) !== 'select') {
+				self::$lastError = 'StreamQuery only supports SELECT statements';
+				return false;
+			}
+
+			$comm = null;
+
+			try {
+				self::$_conn->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, false);
+				$comm = self::$_conn->prepare($sql);
+				$comm->execute($params);
+				self::$lastError = self::$_conn->errorInfo();
+
+				while ($row = $comm->fetchObject()) {
+					$callback($row);
+				}
+
+				return true;
+			} catch (PDOException $e) {
+				self::$lastError = $e;
+				return false;
+			} finally {
+				if ($comm) {
+					$comm->closeCursor();
+				}
+				self::$_conn->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, true);
+			}
+		}
+
         /**
          * Do bulk insert/update using transaction for faster processing
          * @param $transactions
