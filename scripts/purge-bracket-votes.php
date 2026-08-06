@@ -5,11 +5,19 @@
  * tallies, and conditionally cascade corrected winners into later rounds when
  * the displaced character has zero votes there (after the purge).
  *
+ * Optional --tier / --group limit which votes are deleted and reported;
+ * cascade and recount still walk the whole bracket.
+ *
+ * Before delete, matchups whose winner would flip into a next-round entrant
+ * that still has votes (after later-round purges) are protected and skipped.
+ *
  * Dry-run by default. Pass --apply to write.
  *
  * Usage:
  *   php scripts/purge-bracket-votes.php --bracket=<id|perma> --users=12,34,56
- *   php scripts/purge-bracket-votes.php --bracket=<id|perma> --users=12,34,56 --apply
+ *   php scripts/purge-bracket-votes.php --bracket=<id|perma> --tier=2 --users=12,34,56
+ *   php scripts/purge-bracket-votes.php --bracket=<id|perma> --tier=2 --group=0 --users=12,34,56
+ *   php scripts/purge-bracket-votes.php --bracket=<id|perma> --tier=2 --group=0 --users=12,34,56 --apply
  *
  * From the compose web container (DB_HOST=db required for CLI):
  *   docker compose exec -e DB_HOST=db web php scripts/purge-bracket-votes.php --bracket=<id|perma> --users=12,34,56
@@ -22,11 +30,11 @@ require_once './lib/aal.php';
 
 Lib\Cache::getInstance()->setDisabled(true);
 
-$options = getopt('', [ 'bracket:', 'users:', 'apply' ]);
+$options = getopt('', [ 'bracket:', 'tier:', 'group:', 'users:', 'apply' ]);
 $apply = array_key_exists('apply', $options);
 
 if (empty($options['bracket']) || empty($options['users'])) {
-    fwrite(STDERR, "Usage: php scripts/purge-bracket-votes.php --bracket=<id|perma> --users=12,34,56 [--apply]\n");
+    fwrite(STDERR, "Usage: php scripts/purge-bracket-votes.php --bracket=<id|perma> [--tier=N] [--group=N] --users=12,34,56 [--apply]\n");
     exit(1);
 }
 
@@ -35,6 +43,8 @@ if (count($userIds) === 0) {
     fwrite(STDERR, "Error: --users must be a comma-separated list of numeric user_id values.\n");
     exit(1);
 }
+
+$deleteScope = parseDeleteScope($options);
 
 $bracket = resolveBracket($options['bracket']);
 if (!$bracket) {
@@ -54,44 +64,10 @@ if ($users === null) {
 
 echo $apply ? "MODE: APPLY\n" : "MODE: DRY-RUN (pass --apply to write)\n";
 echo "Bracket: {$bracket->name} (id={$bracket->id}, perma={$bracket->perma})\n";
+echo 'Delete scope: ' . formatDeleteScope($deleteScope) . "\n";
 echo 'Users: ' . implode(', ', array_map(function ($user) {
-    return $user->id . ' (/u/' . $user->name . ')';
+    return $user->id . ' (u/' . $user->name . ')';
 }, $users)) . "\n\n";
-
-$report = reportVotes($bracket->id, $userIds);
-printVoteReport($report);
-
-$userPlaceholders = buildInPlaceholders($userIds, 'user');
-$userParams = buildInParams($userIds, 'user');
-
-$deleteSql = 'DELETE v FROM votes v'
-    . ' INNER JOIN round r ON r.round_id = v.round_id'
-    . ' WHERE v.bracket_id = :bracketId'
-    . ' AND v.user_id IN (' . $userPlaceholders . ')'
-    . ' AND r.round_tier >= 1';
-
-$deleteCountSql = 'SELECT COUNT(1) AS total FROM votes v'
-    . ' INNER JOIN round r ON r.round_id = v.round_id'
-    . ' WHERE v.bracket_id = :bracketId'
-    . ' AND v.user_id IN (' . $userPlaceholders . ')'
-    . ' AND r.round_tier >= 1';
-
-$deleteParams = array_merge([ ':bracketId' => $bracket->id ], $userParams);
-$pendingDelete = (int) fetchScalar($deleteCountSql, $deleteParams);
-echo "Tournament votes to delete: {$pendingDelete}\n\n";
-
-// Cascades and recounts use post-purge vote tallies. In dry-run, exclude these users.
-$excludeUserIds = $apply ? [] : $userIds;
-
-if ($apply) {
-    $deleted = Lib\Db::Query($deleteSql, $deleteParams);
-    if ($deleted === false) {
-        fwrite(STDERR, "Error: failed to delete votes.\n");
-        exit(1);
-    }
-    echo "Deleted vote rows: {$deleted}\n\n";
-    $excludeUserIds = [];
-}
 
 $rounds = loadTournamentRounds($bracket->id);
 $slotMap = [];
@@ -102,14 +78,51 @@ foreach ($rounds as $round) {
     ];
 }
 
-$cascadeActions = planCascades($rounds, $slotMap, $excludeUserIds);
-printCascadeReport($cascadeActions);
+$voteMaps = loadVoteCountMaps($bracket->id, $userIds);
+
+$feederRoundIdsWithUserVotes = loadFeederRoundIdsWithUserVotes($bracket->id, $userIds, $deleteScope);
+$protectedRoundIds = planProtectedFeeders(
+    $rounds,
+    $slotMap,
+    $userIds,
+    $deleteScope,
+    $feederRoundIdsWithUserVotes,
+    $voteMaps
+);
+printProtectionReport($protectedRoundIds, $rounds);
+
+$deleteQuery = buildDeleteQuery($bracket->id, $userIds, $deleteScope, $protectedRoundIds);
+$pendingDelete = (int) fetchScalar($deleteQuery['countSql'], $deleteQuery['params']);
+echo "Tournament votes to delete: {$pendingDelete}\n\n";
+
+// Cascades and recounts use post-purge vote tallies. In dry-run, exclude these users
+// on rounds that would actually be deleted.
+$excludeUserIdsByRound = [];
+
+if ($apply) {
+    $deleted = Lib\Db::Query($deleteQuery['deleteSql'], $deleteQuery['params']);
+    if ($deleted === false) {
+        fwrite(STDERR, "Error: failed to delete votes.\n");
+        exit(1);
+    }
+    echo "Deleted vote rows: {$deleted}\n\n";
+    $voteMaps = loadVoteCountMaps($bracket->id, []);
+} else {
+    $excludeUserIdsByRound = buildExcludeUserIdsByRound(
+        $rounds,
+        $userIds,
+        $deleteScope,
+        $protectedRoundIds
+    );
+}
+
+$cascadeActions = planCascades($rounds, $slotMap, $excludeUserIdsByRound, $voteMaps);
+$recountActions = planRecounts($rounds, $slotMap, $excludeUserIdsByRound, $voteMaps);
+printRecountReport($recountActions);
+printOpenRoundsReport($rounds, $slotMap);
 
 if ($apply) {
     foreach ($cascadeActions as $action) {
-        if ($action['type'] !== 'cascade') {
-            continue;
-        }
         $round = $rounds[$action['nextRoundId']];
         if ($action['slot'] === 1) {
             $round->character1Id = $action['expectedCharacterId'];
@@ -117,38 +130,82 @@ if ($apply) {
             $round->character2Id = $action['expectedCharacterId'];
         }
         $round->sync();
-        echo "Cascaded round {$round->id}: entrant {$action['slot']} "
-            . formatEntrantLabel($action['actualCharacterId'])
-            . ' -> '
-            . formatEntrantLabel($action['expectedCharacterId'])
-            . "\n";
     }
-    if (count(array_filter($cascadeActions, function ($action) {
-        return $action['type'] === 'cascade';
-    })) > 0) {
-        echo "\n";
-    }
-}
 
-$recountActions = planRecounts($rounds, $slotMap, $excludeUserIds);
-printRecountReport($recountActions);
-printOpenRoundsReport($rounds, $slotMap);
-
-if ($apply) {
+    $syncedCount = 0;
     foreach ($recountActions as $action) {
+        if (!recountNeedsSync($action)) {
+            continue;
+        }
         $round = $rounds[$action['roundId']];
         $round->character1Id = $slotMap[(int) $round->id][0];
         $round->character2Id = $slotMap[(int) $round->id][1];
         $round->character1Votes = $action['character1Votes'];
         $round->character2Votes = $action['character2Votes'];
         $round->sync();
+        $syncedCount++;
     }
-    echo 'Updated finalized tallies on ' . count($recountActions) . " round(s).\n\n";
+    echo "Updated finalized tallies on {$syncedCount} round(s).\n\n";
     bustCaches($bracket, $users);
     echo "Cache refresh complete.\n";
     echo "Done.\n";
 } else {
     echo "Dry-run complete. Re-run with --apply to write changes.\n";
+}
+
+/**
+ * @param array $options
+ * @return array{tier:int|null,group:int|null}
+ */
+function parseDeleteScope(array $options) {
+    $scope = [
+        'tier' => null,
+        'group' => null,
+    ];
+
+    if (array_key_exists('tier', $options)) {
+        if (!is_numeric($options['tier'])) {
+            fwrite(STDERR, "Error: --tier must be numeric.\n");
+            exit(1);
+        }
+        $scope['tier'] = (int) $options['tier'];
+        if ($scope['tier'] < 1) {
+            fwrite(STDERR, "Error: --tier must be >= 1 (eliminations are never deleted).\n");
+            exit(1);
+        }
+    }
+
+    if (array_key_exists('group', $options)) {
+        if (!is_numeric($options['group'])) {
+            fwrite(STDERR, "Error: --group must be numeric.\n");
+            exit(1);
+        }
+        if ($scope['tier'] === null) {
+            fwrite(STDERR, "Error: --group requires --tier.\n");
+            exit(1);
+        }
+        $scope['group'] = (int) $options['group'];
+        if ($scope['group'] < 0) {
+            fwrite(STDERR, "Error: --group must be >= 0.\n");
+            exit(1);
+        }
+    }
+
+    return $scope;
+}
+
+/**
+ * @param array{tier:int|null,group:int|null} $deleteScope
+ * @return string
+ */
+function formatDeleteScope(array $deleteScope) {
+    if ($deleteScope['tier'] === null) {
+        return 'all tournament tiers';
+    }
+    if ($deleteScope['group'] === null) {
+        return 'tier ' . $deleteScope['tier'];
+    }
+    return 'tier ' . $deleteScope['tier'] . ', group ' . $deleteScope['group'];
 }
 
 /**
@@ -184,44 +241,6 @@ function resolveUsers(array $userIds) {
 
 /**
  * @param int $bracketId
- * @param int[] $userIds
- * @return object
- */
-function reportVotes($bracketId, array $userIds) {
-    $placeholders = buildInPlaceholders($userIds, 'user');
-    $params = array_merge([ ':bracketId' => $bracketId ], buildInParams($userIds, 'user'));
-
-    $sql = 'SELECT'
-        . ' SUM(CASE WHEN r.round_tier = 0 THEN 1 ELSE 0 END) AS elim_total,'
-        . ' SUM(CASE WHEN r.round_tier >= 1 THEN 1 ELSE 0 END) AS tournament_total'
-        . ' FROM votes v'
-        . ' INNER JOIN round r ON r.round_id = v.round_id'
-        . ' WHERE v.bracket_id = :bracketId'
-        . ' AND v.user_id IN (' . $placeholders . ')';
-
-    $row = null;
-    $result = Lib\Db::Query($sql, $params);
-    if ($result && $result->count) {
-        $row = Lib\Db::Fetch($result);
-    }
-
-    return (object) [
-        'elimTotal' => (int) ($row->elim_total ?? 0),
-        'tournamentTotal' => (int) ($row->tournament_total ?? 0),
-    ];
-}
-
-/**
- * @param object $report
- */
-function printVoteReport($report) {
-    if ($report->elimTotal > 0) {
-        echo "Note: listed users also have {$report->elimTotal} elimination vote(s); those are left untouched.\n\n";
-    }
-}
-
-/**
- * @param int $bracketId
  * @return array<int, Api\Round> keyed by round id
  */
 function loadTournamentRounds($bracketId) {
@@ -243,16 +262,259 @@ function loadTournamentRounds($bracketId) {
 }
 
 /**
+ * @param int $bracketId
+ * @param int[] $userIds
+ * @param array{tier:int|null,group:int|null} $deleteScope
+ * @return int[]
+ */
+function loadFeederRoundIdsWithUserVotes($bracketId, array $userIds, array $deleteScope) {
+    $placeholders = buildInPlaceholders($userIds, 'user');
+    $params = array_merge([ ':bracketId' => $bracketId ], buildInParams($userIds, 'user'));
+
+    $sql = 'SELECT DISTINCT r.round_id AS round_id FROM votes v'
+        . ' INNER JOIN round r ON r.round_id = v.round_id'
+        . ' WHERE v.bracket_id = :bracketId'
+        . ' AND v.user_id IN (' . $placeholders . ')'
+        . ' AND r.round_tier >= 1'
+        . buildDeleteScopeSql('r', $deleteScope, $params);
+
+    $result = Lib\Db::Query($sql, $params);
+    if (!$result || !$result->count) {
+        return [];
+    }
+
+    $roundIds = [];
+    while ($row = Lib\Db::Fetch($result)) {
+        $roundIds[] = (int) $row->round_id;
+    }
+    return $roundIds;
+}
+
+/**
+ * Latest tier to earliest: protect feeders whose winner would flip into a
+ * next-round entrant that still has votes after later-round purges.
+ *
  * @param array<int, Api\Round> $rounds
  * @param array<int, array{0:int,1:int}> $slotMap
- * @param int[] $excludeUserIds
- * @return array<int, array>
+ * @param int[] $userIds
+ * @param array{tier:int|null,group:int|null} $deleteScope
+ * @param int[] $feederRoundIdsWithUserVotes
+ * @param array{full:array,excluding:array} $voteMaps
+ * @return int[]
  */
-function planCascades(array $rounds, array &$slotMap, array $excludeUserIds) {
-    $actions = [];
+function planProtectedFeeders(
+    array $rounds,
+    array $slotMap,
+    array $userIds,
+    array $deleteScope,
+    array $feederRoundIdsWithUserVotes,
+    array $voteMaps
+) {
+    if (count($feederRoundIdsWithUserVotes) === 0) {
+        return [];
+    }
+
+    $candidateIds = array_fill_keys($feederRoundIdsWithUserVotes, true);
+    $protectedLookup = [];
+    $roundsByTier = groupRoundsByTier($rounds, false);
+    $tiers = array_keys($roundsByTier);
+    rsort($tiers, SORT_NUMERIC);
+
+    foreach ($tiers as $tier) {
+        foreach ($roundsByTier[$tier] as $feeder) {
+            $feederId = (int) $feeder->id;
+            if (!isset($candidateIds[$feederId]) || (int) $feeder->final !== 1) {
+                continue;
+            }
+
+            $slots = $slotMap[$feederId];
+            $excludeUserIds = usersToExcludeForRound(
+                $feederId,
+                $userIds,
+                $deleteScope,
+                $protectedLookup,
+                $rounds
+            );
+            $simulatedWinner = computeWinnerId(
+                $feederId,
+                $slots[0],
+                $slots[1],
+                $excludeUserIds,
+                $voteMaps
+            );
+            if (!$simulatedWinner) {
+                continue;
+            }
+
+            $simulatedLoser = computeLoserId($slots[0], $slots[1], $simulatedWinner);
+            foreach (findFeederAdvancementMismatches($feeder, $rounds, $slotMap, $simulatedWinner, $simulatedLoser) as $mismatch) {
+                $nextRoundExcludeUserIds = usersToExcludeForRound(
+                    $mismatch['nextRoundId'],
+                    $userIds,
+                    $deleteScope,
+                    $protectedLookup,
+                    $rounds
+                );
+                $votesForActual = countCharacterVotesFromMap(
+                    $voteMaps,
+                    $mismatch['nextRoundId'],
+                    $mismatch['actualCharacterId'],
+                    $nextRoundExcludeUserIds
+                );
+
+                if ($votesForActual > 0) {
+                    $protectedLookup[$feederId] = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    return array_map('intval', array_keys($protectedLookup));
+}
+
+/**
+ * @param int[] $protectedRoundIds
+ * @param array<int, Api\Round> $rounds
+ */
+function printProtectionReport(array $protectedRoundIds, array $rounds) {
+    echo "Protected matchups (delete skipped; winner flip would displace a voted-on next-round entrant):\n";
+    if (count($protectedRoundIds) === 0) {
+        echo "  (none)\n\n";
+        return;
+    }
+
+    sort($protectedRoundIds, SORT_NUMERIC);
+    foreach ($protectedRoundIds as $roundId) {
+        $round = $rounds[$roundId];
+        echo "  round {$roundId} (tier {$round->tier}, group {$round->group}):"
+            . ' ' . formatEntrantLabel($round->character1Id)
+            . ' vs '
+            . formatEntrantLabel($round->character2Id)
+            . "\n";
+    }
+    echo "\n";
+}
+
+/**
+ * @param int $bracketId
+ * @param int[] $userIds
+ * @param array{tier:int|null,group:int|null} $deleteScope
+ * @param int[] $protectedRoundIds
+ * @return array{deleteSql:string,countSql:string,params:array}
+ */
+function buildDeleteQuery($bracketId, array $userIds, array $deleteScope, array $protectedRoundIds) {
+    $userPlaceholders = buildInPlaceholders($userIds, 'user');
+    $params = array_merge([ ':bracketId' => (int) $bracketId ], buildInParams($userIds, 'user'));
+
+    $where = ' WHERE v.bracket_id = :bracketId'
+        . ' AND v.user_id IN (' . $userPlaceholders . ')'
+        . ' AND r.round_tier >= 1'
+        . buildDeleteScopeSql('r', $deleteScope, $params);
+
+    if (count($protectedRoundIds) > 0) {
+        $where .= ' AND r.round_id NOT IN (' . buildInPlaceholders($protectedRoundIds, 'prot') . ')';
+        $params = array_merge($params, buildInParams($protectedRoundIds, 'prot'));
+    }
+
+    return [
+        'deleteSql' => 'DELETE v FROM votes v INNER JOIN round r ON r.round_id = v.round_id' . $where,
+        'countSql' => 'SELECT COUNT(1) AS total FROM votes v INNER JOIN round r ON r.round_id = v.round_id' . $where,
+        'params' => $params,
+    ];
+}
+
+/**
+ * @param array<int, Api\Round> $rounds
+ * @param int[] $userIds
+ * @param array{tier:int|null,group:int|null} $deleteScope
+ * @param int[] $protectedRoundIds
+ * @return array<int, int[]>
+ */
+function buildExcludeUserIdsByRound(array $rounds, array $userIds, array $deleteScope, array $protectedRoundIds) {
+    $protectedLookup = array_fill_keys($protectedRoundIds, true);
+    $excludeByRound = [];
+
+    foreach ($rounds as $round) {
+        $roundId = (int) $round->id;
+        $exclude = usersToExcludeForRound($roundId, $userIds, $deleteScope, $protectedLookup, $rounds);
+        if (count($exclude) > 0) {
+            $excludeByRound[$roundId] = $exclude;
+        }
+    }
+
+    return $excludeByRound;
+}
+
+/**
+ * Users whose votes should be treated as deleted when simulating this round.
+ *
+ * @param int $roundId
+ * @param int[] $userIds
+ * @param array{tier:int|null,group:int|null} $deleteScope
+ * @param array<int, bool> $protectedLookup
+ * @param array<int, Api\Round> $rounds
+ * @return int[]
+ */
+function usersToExcludeForRound($roundId, array $userIds, array $deleteScope, array $protectedLookup, array $rounds) {
+    if (isset($protectedLookup[$roundId]) || !isset($rounds[$roundId])) {
+        return [];
+    }
+    if (!roundMatchesDeleteScope($rounds[$roundId], $deleteScope)) {
+        return [];
+    }
+    return $userIds;
+}
+
+/**
+ * @param Api\Round $round
+ * @param array{tier:int|null,group:int|null} $deleteScope
+ * @return bool
+ */
+function roundMatchesDeleteScope(Api\Round $round, array $deleteScope) {
+    if ($deleteScope['tier'] === null) {
+        return true;
+    }
+    if ((int) $round->tier !== $deleteScope['tier']) {
+        return false;
+    }
+    if ($deleteScope['group'] === null) {
+        return true;
+    }
+    return (int) $round->group === $deleteScope['group'];
+}
+
+/**
+ * @param string $tableAlias
+ * @param array{tier:int|null,group:int|null} $deleteScope
+ * @param array $params
+ * @return string
+ */
+function buildDeleteScopeSql($tableAlias, array $deleteScope, array &$params) {
+    if ($deleteScope['tier'] === null) {
+        return '';
+    }
+
+    $sql = ' AND ' . $tableAlias . '.round_tier = :scopeTier';
+    $params[':scopeTier'] = $deleteScope['tier'];
+
+    if ($deleteScope['group'] !== null) {
+        $sql .= ' AND ' . $tableAlias . '.round_group = :scopeGroup';
+        $params[':scopeGroup'] = $deleteScope['group'];
+    }
+
+    return $sql;
+}
+
+/**
+ * @param array<int, Api\Round> $rounds
+ * @param bool $skipThirdPlace
+ * @return array<int, Api\Round[]>
+ */
+function groupRoundsByTier(array $rounds, $skipThirdPlace) {
     $roundsByTier = [];
     foreach ($rounds as $round) {
-        if (!empty($round->isThirdPlaceMatch)) {
+        if ($skipThirdPlace && !empty($round->isThirdPlaceMatch)) {
             continue;
         }
         $tier = (int) $round->tier;
@@ -261,7 +523,76 @@ function planCascades(array $rounds, array &$slotMap, array $excludeUserIds) {
         }
         $roundsByTier[$tier][] = $round;
     }
+    return $roundsByTier;
+}
 
+/**
+ * Next-tier slots currently occupied by a feeder entrant that should be someone else.
+ *
+ * @param Api\Round $feeder
+ * @param array<int, Api\Round> $rounds
+ * @param array<int, array{0:int,1:int}> $slotMap
+ * @param int $expectedWinner
+ * @param int|null $expectedLoser
+ * @return array<int, array{nextRoundId:int,nextTier:int,slot:int,actualCharacterId:int,expectedCharacterId:int,isThirdPlaceMatch:bool}>
+ */
+function findFeederAdvancementMismatches(
+    Api\Round $feeder,
+    array $rounds,
+    array $slotMap,
+    $expectedWinner,
+    $expectedLoser
+) {
+    $slots = $slotMap[(int) $feeder->id];
+    $feederCharacterIds = array_values(array_filter($slots, function ($characterId) {
+        return (int) $characterId > 1;
+    }));
+    $nextTier = (int) $feeder->tier + 1;
+    $mismatches = [];
+
+    foreach ($rounds as $nextRound) {
+        if ((int) $nextRound->tier !== $nextTier) {
+            continue;
+        }
+
+        $nextRoundId = (int) $nextRound->id;
+        $nextSlots = $slotMap[$nextRoundId];
+
+        foreach ([ 1 => $nextSlots[0], 2 => $nextSlots[1] ] as $slotNumber => $actualCharacterId) {
+            if (!in_array((int) $actualCharacterId, $feederCharacterIds, true)) {
+                continue;
+            }
+
+            $isThird = !empty($nextRound->isThirdPlaceMatch);
+            $expectedCharacterId = $isThird ? $expectedLoser : $expectedWinner;
+            if (!$expectedCharacterId || (int) $actualCharacterId === (int) $expectedCharacterId) {
+                continue;
+            }
+
+            $mismatches[] = [
+                'nextRoundId' => $nextRoundId,
+                'nextTier' => (int) $nextRound->tier,
+                'slot' => $slotNumber,
+                'actualCharacterId' => (int) $actualCharacterId,
+                'expectedCharacterId' => (int) $expectedCharacterId,
+                'isThirdPlaceMatch' => $isThird,
+            ];
+        }
+    }
+
+    return $mismatches;
+}
+
+/**
+ * @param array<int, Api\Round> $rounds
+ * @param array<int, array{0:int,1:int}> $slotMap
+ * @param array<int, int[]> $excludeUserIdsByRound
+ * @param array{full:array,excluding:array} $voteMaps
+ * @return array<int, array>
+ */
+function planCascades(array $rounds, array &$slotMap, array $excludeUserIdsByRound, array $voteMaps) {
+    $actions = [];
+    $roundsByTier = groupRoundsByTier($rounds, true);
     $tiers = array_keys($roundsByTier);
     sort($tiers, SORT_NUMERIC);
 
@@ -271,69 +602,45 @@ function planCascades(array $rounds, array &$slotMap, array $excludeUserIds) {
                 continue;
             }
 
-            $slots = $slotMap[(int) $feeder->id];
+            $feederId = (int) $feeder->id;
+            $slots = $slotMap[$feederId];
+            $feederExcludeUserIds = $excludeUserIdsByRound[$feederId] ?? [];
             $expectedWinner = computeWinnerId(
-                $feeder->id,
+                $feederId,
                 $slots[0],
                 $slots[1],
-                $excludeUserIds
+                $feederExcludeUserIds,
+                $voteMaps
             );
-            $expectedLoser = computeLoserId($slots[0], $slots[1], $expectedWinner);
             if (!$expectedWinner) {
                 continue;
             }
 
-            $nextTier = $tier + 1;
+            $expectedLoser = computeLoserId($slots[0], $slots[1], $expectedWinner);
+            foreach (findFeederAdvancementMismatches($feeder, $rounds, $slotMap, $expectedWinner, $expectedLoser) as $mismatch) {
+                $nextRoundExcludeUserIds = $excludeUserIdsByRound[$mismatch['nextRoundId']] ?? [];
+                $votesForActual = countCharacterVotesFromMap(
+                    $voteMaps,
+                    $mismatch['nextRoundId'],
+                    $mismatch['actualCharacterId'],
+                    $nextRoundExcludeUserIds
+                );
 
-            foreach ($rounds as $nextRound) {
-                if ((int) $nextRound->tier !== $nextTier) {
+                if ($votesForActual !== 0) {
                     continue;
                 }
 
-                $nextSlots = $slotMap[(int) $nextRound->id];
-                $feederCharacterIds = array_values(array_filter($slots, function ($characterId) {
-                    return (int) $characterId > 1;
-                }));
-
-                foreach ([ 1 => $nextSlots[0], 2 => $nextSlots[1] ] as $slotNumber => $actualCharacterId) {
-                    if (!in_array((int) $actualCharacterId, $feederCharacterIds, true)) {
-                        continue;
-                    }
-
-                    $isThird = !empty($nextRound->isThirdPlaceMatch);
-                    $expectedCharacterId = $isThird ? $expectedLoser : $expectedWinner;
-                    if (!$expectedCharacterId) {
-                        continue;
-                    }
-
-                    if ((int) $actualCharacterId === (int) $expectedCharacterId) {
-                        continue;
-                    }
-
-                    $votesForActual = countCharacterVotes(
-                        (int) $nextRound->id,
-                        (int) $actualCharacterId,
-                        $excludeUserIds
-                    );
-
-                    $action = [
-                        'type' => $votesForActual === 0 ? 'cascade' : 'accept',
-                        'feederRoundId' => (int) $feeder->id,
-                        'feederTier' => (int) $feeder->tier,
-                        'nextRoundId' => (int) $nextRound->id,
-                        'nextTier' => (int) $nextRound->tier,
-                        'slot' => $slotNumber,
-                        'actualCharacterId' => (int) $actualCharacterId,
-                        'expectedCharacterId' => (int) $expectedCharacterId,
-                        'votesForActual' => $votesForActual,
-                        'isThirdPlaceMatch' => $isThird,
-                    ];
-                    $actions[] = $action;
-
-                    if ($action['type'] === 'cascade') {
-                        $slotMap[(int) $nextRound->id][$slotNumber - 1] = (int) $expectedCharacterId;
-                    }
-                }
+                $actions[] = [
+                    'feederRoundId' => $feederId,
+                    'feederTier' => (int) $feeder->tier,
+                    'nextRoundId' => $mismatch['nextRoundId'],
+                    'nextTier' => $mismatch['nextTier'],
+                    'slot' => $mismatch['slot'],
+                    'actualCharacterId' => $mismatch['actualCharacterId'],
+                    'expectedCharacterId' => $mismatch['expectedCharacterId'],
+                    'isThirdPlaceMatch' => $mismatch['isThirdPlaceMatch'],
+                ];
+                $slotMap[$mismatch['nextRoundId']][$mismatch['slot'] - 1] = $mismatch['expectedCharacterId'];
             }
         }
     }
@@ -342,52 +649,30 @@ function planCascades(array $rounds, array &$slotMap, array $excludeUserIds) {
 }
 
 /**
- * @param array $actions
- */
-function printCascadeReport(array $actions) {
-    echo "Cascade plan:\n";
-    if (count($actions) === 0) {
-        echo "  (no mismatches between feeder winners and later-round entrants)\n\n";
-        return;
-    }
-
-    foreach ($actions as $action) {
-        $label = $action['type'] === 'cascade' ? 'CASCADE' : 'NO CASCADE';
-        $third = $action['isThirdPlaceMatch'] ? ' [third-place]' : '';
-        $line = "  {$label}: feeder round {$action['feederRoundId']}"
-            . " (tier {$action['feederTier']})"
-            . " -> next round {$action['nextRoundId']}"
-            . " (tier {$action['nextTier']}){$third}"
-            . " entrant {$action['slot']}:"
-            . ' ' . formatEntrantLabel($action['actualCharacterId']);
-        if ($action['type'] === 'cascade') {
-            $line .= ' => ' . formatEntrantLabel($action['expectedCharacterId']);
-        }
-        echo $line . "\n";
-    }
-    echo "\n";
-}
-
-/**
  * @param array<int, Api\Round> $rounds
  * @param array<int, array{0:int,1:int}> $slotMap
- * @param int[] $excludeUserIds
+ * @param array<int, int[]> $excludeUserIdsByRound
+ * @param array{full:array,excluding:array} $voteMaps
  * @return array<int, array>
  */
-function planRecounts(array $rounds, array $slotMap, array $excludeUserIds) {
+function planRecounts(array $rounds, array $slotMap, array $excludeUserIdsByRound, array $voteMaps) {
     $actions = [];
     foreach ($rounds as $round) {
         if ((int) $round->final !== 1) {
             continue;
         }
-        $slots = $slotMap[(int) $round->id];
-        $character1Votes = countCharacterVotes((int) $round->id, $slots[0], $excludeUserIds);
-        $character2Votes = countCharacterVotes((int) $round->id, $slots[1], $excludeUserIds);
+        $roundId = (int) $round->id;
+        $slots = $slotMap[$roundId];
+        $roundExcludeUserIds = $excludeUserIdsByRound[$roundId] ?? [];
+        $character1Votes = countCharacterVotesFromMap($voteMaps, $roundId, $slots[0], $roundExcludeUserIds);
+        $character2Votes = countCharacterVotesFromMap($voteMaps, $roundId, $slots[1], $roundExcludeUserIds);
         $actions[] = [
-            'roundId' => (int) $round->id,
+            'roundId' => $roundId,
             'tier' => (int) $round->tier,
             'character1Id' => $slots[0],
             'character2Id' => $slots[1],
+            'previousCharacter1Id' => (int) $round->character1Id,
+            'previousCharacter2Id' => (int) $round->character2Id,
             'character1Votes' => $character1Votes,
             'character2Votes' => $character2Votes,
             'previousCharacter1Votes' => $round->character1Votes,
@@ -398,24 +683,61 @@ function planRecounts(array $rounds, array $slotMap, array $excludeUserIds) {
 }
 
 /**
+ * @param array $action
+ * @return bool
+ */
+function recountNeedsSync(array $action) {
+    $votesChanged = ((int) $action['previousCharacter1Votes'] !== (int) $action['character1Votes'])
+        || ((int) $action['previousCharacter2Votes'] !== (int) $action['character2Votes']);
+    $entrantsChanged = ((int) $action['previousCharacter1Id'] !== (int) $action['character1Id'])
+        || ((int) $action['previousCharacter2Id'] !== (int) $action['character2Id']);
+    return $votesChanged || $entrantsChanged;
+}
+
+/**
  * @param array $actions
  */
 function printRecountReport(array $actions) {
-    echo "Finalized tally recount:\n";
+    echo "Finalized tally recount (* = winner changed):\n";
     if (count($actions) === 0) {
         echo "  (no finalized tournament rounds)\n\n";
         return;
     }
+
+    $any = false;
     foreach ($actions as $action) {
-        $changed = ((int) $action['previousCharacter1Votes'] !== (int) $action['character1Votes'])
+        $votesChanged = ((int) $action['previousCharacter1Votes'] !== (int) $action['character1Votes'])
             || ((int) $action['previousCharacter2Votes'] !== (int) $action['character2Votes']);
-        $flag = $changed ? ' *' : '';
-        echo "  round {$action['roundId']} (tier {$action['tier']}):"
+        if (!$votesChanged) {
+            continue;
+        }
+
+        $any = true;
+        $previousWinnerId = computeWinnerFromVoteCounts(
+            (int) $action['previousCharacter1Id'],
+            (int) $action['previousCharacter2Id'],
+            (int) $action['previousCharacter1Votes'],
+            (int) $action['previousCharacter2Votes']
+        );
+        $newWinnerId = computeWinnerFromVoteCounts(
+            (int) $action['character1Id'],
+            (int) $action['character2Id'],
+            (int) $action['character1Votes'],
+            (int) $action['character2Votes']
+        );
+        $winnerChanged = (int) $previousWinnerId !== (int) $newWinnerId;
+        $flag = $winnerChanged ? ' *' : '';
+
+        echo "  round {$action['roundId']} (tier {$action['tier']})"
             . ' ' . formatEntrantLabel($action['character1Id'])
             . " {$action['previousCharacter1Votes']}->{$action['character1Votes']},"
             . ' ' . formatEntrantLabel($action['character2Id'])
             . " {$action['previousCharacter2Votes']}->{$action['character2Votes']}"
             . "{$flag}\n";
+    }
+
+    if (!$any) {
+        echo "  (no tally changes)\n";
     }
     echo "\n";
 }
@@ -425,22 +747,26 @@ function printRecountReport(array $actions) {
  * @param array<int, array{0:int,1:int}> $slotMap
  */
 function printOpenRoundsReport(array $rounds, array $slotMap) {
-    echo "Open (non-finalized) matchups:\n";
+    echo "Open matchups with entrant changes:\n";
     $any = false;
     foreach ($rounds as $round) {
         if ((int) $round->final === 1) {
             continue;
         }
-        $any = true;
         $slots = $slotMap[(int) $round->id];
         $changed = ((int) $slots[0] !== (int) $round->character1Id)
             || ((int) $slots[1] !== (int) $round->character2Id);
-        $flag = $changed ? ' *' : '';
+        if (!$changed) {
+            continue;
+        }
+        $any = true;
         echo "  round {$round->id} (tier {$round->tier}):"
-            . ' ' . formatEntrantLabel($slots[0])
+            . ' ' . formatEntrantLabel($round->character1Id)
+            . ' -> ' . formatEntrantLabel($slots[0])
             . ' vs '
-            . formatEntrantLabel($slots[1])
-            . "{$flag}\n";
+            . formatEntrantLabel($round->character2Id)
+            . ' -> ' . formatEntrantLabel($slots[1])
+            . "\n";
     }
     if (!$any) {
         echo "  (none)\n";
@@ -453,9 +779,10 @@ function printOpenRoundsReport(array $rounds, array $slotMap) {
  * @param int $character1Id
  * @param int $character2Id
  * @param int[] $excludeUserIds
+ * @param array{full:array,excluding:array} $voteMaps
  * @return int|null
  */
-function computeWinnerId($roundId, $character1Id, $character2Id, array $excludeUserIds) {
+function computeWinnerId($roundId, $character1Id, $character2Id, array $excludeUserIds, array $voteMaps) {
     $character1Id = (int) $character1Id;
     $character2Id = (int) $character2Id;
 
@@ -466,9 +793,31 @@ function computeWinnerId($roundId, $character1Id, $character2Id, array $excludeU
         return null;
     }
 
-    $votes1 = countCharacterVotes($roundId, $character1Id, $excludeUserIds);
-    $votes2 = countCharacterVotes($roundId, $character2Id, $excludeUserIds);
+    $votes1 = countCharacterVotesFromMap($voteMaps, $roundId, $character1Id, $excludeUserIds);
+    $votes2 = countCharacterVotesFromMap($voteMaps, $roundId, $character2Id, $excludeUserIds);
 
+    return computeWinnerFromVoteCounts($character1Id, $character2Id, $votes1, $votes2);
+}
+
+/**
+ * @param int $character1Id
+ * @param int $character2Id
+ * @param int $votes1
+ * @param int $votes2
+ * @return int|null
+ */
+function computeWinnerFromVoteCounts($character1Id, $character2Id, $votes1, $votes2) {
+    $character1Id = (int) $character1Id;
+    $character2Id = (int) $character2Id;
+    $votes1 = (int) $votes1;
+    $votes2 = (int) $votes2;
+
+    if ($character2Id === 1) {
+        return $character1Id ?: null;
+    }
+    if ($character1Id <= 0 || $character2Id <= 0) {
+        return null;
+    }
     if ($votes1 > $votes2) {
         return $character1Id;
     }
@@ -508,11 +857,11 @@ function formatEntrantLabel($characterId) {
     if ($characterId === 1) {
         return 'bye';
     }
-    $seed = getCharacterSeed($characterId);
-    if ($seed === PHP_INT_MAX) {
-        return 'seed ?';
+    $character = getCharacter($characterId);
+    if ($character && $character->name) {
+        return (string) $character->name;
     }
-    return 'seed ' . $seed;
+    return 'character ' . $characterId;
 }
 
 /**
@@ -520,40 +869,97 @@ function formatEntrantLabel($characterId) {
  * @return int
  */
 function getCharacterSeed($characterId) {
-    static $seeds = [];
-    $characterId = (int) $characterId;
-    if (!array_key_exists($characterId, $seeds)) {
-        $character = Api\Character::getById($characterId);
-        $seeds[$characterId] = $character && $character->seed !== null
-            ? (int) $character->seed
-            : PHP_INT_MAX;
+    $character = getCharacter($characterId);
+    if ($character && $character->seed !== null) {
+        return (int) $character->seed;
     }
-    return $seeds[$characterId];
+    return PHP_INT_MAX;
 }
 
 /**
+ * @param int $characterId
+ * @return Api\Character|null
+ */
+function getCharacter($characterId) {
+    static $characters = [];
+    $characterId = (int) $characterId;
+    if (!array_key_exists($characterId, $characters)) {
+        $character = Api\Character::getById($characterId);
+        $characters[$characterId] = $character && (int) $character->id > 0 ? $character : null;
+    }
+    return $characters[$characterId];
+}
+
+/**
+ * Load per-round character vote totals for the bracket.
+ * When $excludeUserIds is non-empty, also builds an "excluding" map that omits those users.
+ *
+ * @param int $bracketId
+ * @param int[] $excludeUserIds
+ * @return array{full:array<int,array<int,int>>,excluding:array<int,array<int,int>>}
+ */
+function loadVoteCountMaps($bracketId, array $excludeUserIds) {
+    $params = [ ':bracketId' => (int) $bracketId ];
+    $sql = 'SELECT v.round_id AS round_id, v.character_id AS character_id, COUNT(1) AS total';
+
+    if (count($excludeUserIds) > 0) {
+        $sql .= ', SUM(CASE WHEN v.user_id NOT IN ('
+            . buildInPlaceholders($excludeUserIds, 'ex')
+            . ') THEN 1 ELSE 0 END) AS total_excluding';
+        $params = array_merge($params, buildInParams($excludeUserIds, 'ex'));
+    }
+
+    $sql .= ' FROM votes v'
+        . ' INNER JOIN round r ON r.round_id = v.round_id'
+        . ' WHERE v.bracket_id = :bracketId'
+        . ' AND r.round_tier >= 1'
+        . ' GROUP BY v.round_id, v.character_id';
+
+    $full = [];
+    $excluding = [];
+    $result = Lib\Db::Query($sql, $params);
+    if ($result && $result->count) {
+        while ($row = Lib\Db::Fetch($result)) {
+            $roundId = (int) $row->round_id;
+            $characterId = (int) $row->character_id;
+            if (!isset($full[$roundId])) {
+                $full[$roundId] = [];
+            }
+            $full[$roundId][$characterId] = (int) $row->total;
+
+            if (count($excludeUserIds) > 0) {
+                if (!isset($excluding[$roundId])) {
+                    $excluding[$roundId] = [];
+                }
+                $excluding[$roundId][$characterId] = (int) $row->total_excluding;
+            }
+        }
+    }
+
+    if (count($excludeUserIds) === 0) {
+        $excluding = $full;
+    }
+
+    return [
+        'full' => $full,
+        'excluding' => $excluding,
+    ];
+}
+
+/**
+ * @param array{full:array,excluding:array} $voteMaps
  * @param int $roundId
  * @param int $characterId
  * @param int[] $excludeUserIds
  * @return int
  */
-function countCharacterVotes($roundId, $characterId, array $excludeUserIds) {
+function countCharacterVotesFromMap(array $voteMaps, $roundId, $characterId, array $excludeUserIds) {
     $characterId = (int) $characterId;
     if ($characterId <= 0) {
         return 0;
     }
-
-    $params = [
-        ':roundId' => (int) $roundId,
-        ':characterId' => $characterId,
-    ];
-    $sql = 'SELECT COUNT(1) AS total FROM votes WHERE round_id = :roundId AND character_id = :characterId';
-    if (count($excludeUserIds) > 0) {
-        $sql .= ' AND user_id NOT IN (' . buildInPlaceholders($excludeUserIds, 'ex') . ')';
-        $params = array_merge($params, buildInParams($excludeUserIds, 'ex'));
-    }
-
-    return (int) fetchScalar($sql, $params);
+    $bucket = count($excludeUserIds) > 0 ? 'excluding' : 'full';
+    return (int) ($voteMaps[$bucket][(int) $roundId][$characterId] ?? 0);
 }
 
 /**
